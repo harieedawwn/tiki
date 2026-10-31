@@ -19,6 +19,7 @@ Vite + TypeScript + Preact + vite-plugin-pwa. Read SPEC.md for architecture and 
 
 ## Gotchas
 - YouTube uses two players (`youtubeEngine()`): the active one plays and is shown at reveal, the standby one preloads the next song (ads play out muted there). iOS keeps one. Never move an iframe in the DOM (that reloads it); use `usePlayerSlot`, which positions the active one.
+- Navigation: `go()` in `App.tsx` pushes a history entry per screen (going to a screen already below pops back to it); sheets use `useBackClose` (`src/ui/nav.ts`) so Back closes them first. Don't call `history.replaceState(null, ...)` elsewhere.
 - Players must stay at least 200x200 and inside the viewport (under the opaque `.app`), not display:none.
 - The dev code is stored only as a SHA-256 hash in `src/config.ts`. Never commit the plaintext.
 - Keys come from `VITE_*` env vars (`.env.local` locally, repo secrets in the Pages workflow); never write a key into a source file. See `.env.example`.
