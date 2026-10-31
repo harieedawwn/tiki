@@ -3,7 +3,7 @@ import { debug } from './debug';
 import { SkipSongError, type AudioEngine, type ClipResult, type PrepareResult } from './engine';
 
 // YT.PlayerState values (IFrame API reference): -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued.
-const PLAYING = 1, PAUSED = 2, CUED = 5;
+const PLAYING = 1, PAUSED = 2, BUFFERING = 3;
 
 export type PlayerMode = 'hidden' | 'reveal' | 'unlock';
 
@@ -142,16 +142,22 @@ class YouTubeEngine implements AudioEngine {
     this.lastError = 0;
     debug({ engine: 'youtube', startMs, state: 'preparing' });
     p.mute();
-    p.cueVideoById({ videoId, startSeconds: this.startSec });
-    await this.waitFor(() => this.state === CUED || this.state === PAUSED, 8000, tok).catch((e) => {
-      if (e instanceof SkipSongError && e.message !== 'timeout') throw e;
-    });
-    // Play muted until the real video advances past the start point; pre-roll ads play out here.
-    p.playVideo();
-    await this.waitFor(() => {
-      const data = (p as unknown as { getVideoData?: () => { video_id?: string } }).getVideoData?.();
-      return this.state === PLAYING && data?.video_id === videoId && p.getCurrentTime() > this.startSec + 0.05;
-    }, 45000, tok);
+    // Forget the previous video's state: a stale PAUSED/PLAYING must not satisfy the waits below.
+    this.state = -1;
+    // Load and play muted in one step; pre-roll ads play out here until the real video passes the start point.
+    p.loadVideoById({ videoId, startSeconds: this.startSec });
+    // playVideo right after a load is sometimes ignored, leaving the player cued; nudge it until it moves.
+    const kick = setInterval(() => {
+      if (tok === this.token && this.state !== PLAYING && this.state !== BUFFERING) p.playVideo();
+    }, 1500);
+    try {
+      await this.waitFor(() => {
+        const data = (p as unknown as { getVideoData?: () => { video_id?: string } }).getVideoData?.();
+        return this.state === PLAYING && data?.video_id === videoId && p.getCurrentTime() > this.startSec + 0.05;
+      }, 30000, tok);
+    } finally {
+      clearInterval(kick);
+    }
     p.pauseVideo();
     p.seekTo(this.startSec, true);
     await this.waitFor(() => this.state === PAUSED, 3000, tok).catch(() => {});
@@ -164,11 +170,13 @@ class YouTubeEngine implements AudioEngine {
     const tok = ++this.token;
     this.lastError = 0;
     p.pauseVideo();
-    p.seekTo(this.startSec, true);
+    // The player is normally parked at the start already; seeking anyway forces a rebuffer and delays the clip.
+    if (Math.abs(p.getCurrentTime() - this.startSec) > 0.15) p.seekTo(this.startSec, true);
     p.unMute();
     p.setVolume(100);
     if (at) await sleep(Math.max(0, at - performance.now()));
     if (tok !== this.token) return { requestedMs: durationMs, measuredMs: 0 };
+    this.state = -1;
     p.playVideo();
     try {
       await this.waitFor(() => this.state === PLAYING, 6000, tok);

@@ -31,7 +31,7 @@ interface AudioEngine {
 
 ## Decisions
 - One YouTube player (`.yt-host`) lives at body level, 200x200 (API minimum), under the opaque `.app` while guessing; at reveal it is positioned over `.video-slot` with a rAF loop (moving an iframe reloads it).
-- YouTube prepare: cue at start, play muted until state PLAYING, the video id matches and currentTime passes start (pre-roll ads play out muted), then pause and seek. Clip: seek, unMute, play, start timing on PLAYING with performance.now, mute and pause after the duration.
+- YouTube prepare: reset the cached state, `loadVideoById` muted (nudged with playVideo every 1.5 s while not playing/buffering), wait until state PLAYING, the video id matches and currentTime passes start (pre-roll ads play out muted), then pause and seek. Clip: seek only if the player is not already parked at start (a seek forces a rebuffer), unMute, play, start timing on PLAYING with performance.now, mute and pause after the duration, then park at start again.
 - Local: decodeAudioData; start = first 10 ms RMS window that stays above -45 dBFS for 30 ms, minus 20 ms pre-roll, capped at 8 s (threshold and pre-roll are dev settings). Clips use AudioBufferSourceNode with 2 ms gain ramps.
 - Import: playlists.list (name, existence), playlistItems.list (contentDetails, 50/page), videos.list (snippet,status, 50 ids) drops private, non-embeddable, unprocessed and deleted videos. Re-import keeps edits and best score.
 - Search: NFD + strip marks + đ→d; ranks title prefix, then artist/word prefix, then substring; alphabetical with `Intl.Collator('vi')`.
