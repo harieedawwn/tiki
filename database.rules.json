@@ -14,6 +14,13 @@
           "locked": { ".validate": "newData.isBoolean()" },
           "createdAt": { ".validate": "newData.isNumber()" },
           "pausedAt": { ".validate": "newData.isNumber()" },
+          "opts": {
+            "kind": { ".validate": "newData.isString() && newData.val().matches(/^(classic|random|cover|sound)$/)" },
+            "choices": { ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 40" },
+            "flow": { ".validate": "newData.isString() && newData.val().matches(/^(auto|manual)$/)" },
+            "revealSec": { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 30" },
+            "$other": { ".validate": false }
+          },
           "mods": { "$pid": { ".validate": "newData.val() === true && $pid.length <= 40" } },
           "kicked": { "$pid": { ".validate": "newData.val() === true && $pid.length <= 40" } },
           "winners": { "$i": { ".validate": "newData.isString() && newData.val().length <= 40" } },

@@ -1,15 +1,63 @@
-import type { ComponentChildren } from 'preact';
-import { useMemo } from 'preact/hooks';
+import type { CSSProperties, ComponentChildren } from 'preact';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { formatSeconds } from '../core/stages';
 import type { Song } from '../core/types';
+import { IconMusic } from './icons';
 
-/** Square cover; falls back to a flat block with the title's first letter. */
-export function Cover({ song, size }: { song: Pick<Song, 'cover' | 'title'>; size?: number }) {
+const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// YouTube thumbnails: maxres is 100-200 KB; hqdefault (~20 KB) is plenty for tiles. It is letterboxed
+// (4:3 around a 16:9 frame), so tiles zoom it to hide the bars.
+const YT_THUMB = /^(https:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/[^/]+\/)[a-z0-9_]+\.(?:jpg|webp)/i;
+export function coverUrl(url: string, q: 'sm' | 'lg'): { src: string; lb: boolean } {
+  const m = url.match(YT_THUMB);
+  if (!m) return { src: url, lb: false };
+  return q === 'sm' ? { src: m[1] + 'hqdefault.jpg', lb: true } : { src: url, lb: false };
+}
+
+/** Warms the browser cache for covers likely to be shown soon (idle time, small thumbnails). */
+export function prefetchCovers(urls: string[]): void {
+  const run = () => urls.forEach((u) => {
+    if (!u) return;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = coverUrl(u, 'sm').src;
+  });
+  const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback;
+  ric ? ric(run) : setTimeout(run, 300);
+}
+
+/**
+ * Square cover. `q="lg"` shows the small thumbnail first and swaps in the full one when it arrives.
+ * Without an image: a flat block with the title's first letter (or a note when `anonymous`).
+ */
+export function Cover({ song, size, q = 'sm', anonymous }: {
+  song: Pick<Song, 'cover' | 'title'>; size?: number; q?: 'sm' | 'lg'; anonymous?: boolean;
+}) {
   const style = size ? { width: size + 'px', height: size + 'px' } : undefined;
-  return song.cover ? (
-    <img class="cover" src={song.cover} alt="" loading="lazy" decoding="async" style={style} referrerpolicy="no-referrer" />
-  ) : (
-    <div class="cover cover-empty" style={style} aria-hidden="true">{song.title.trim().charAt(0).toUpperCase() || '?'}</div>
+  const [loaded, setLoaded] = useState(false);
+  const [big, setBig] = useState(false);
+  const sm = useMemo(() => coverUrl(song.cover, 'sm'), [song.cover]);
+  const lg = useMemo(() => (q === 'lg' ? coverUrl(song.cover, 'lg') : null), [song.cover, q]);
+  useEffect(() => {
+    setLoaded(false);
+    setBig(false);
+  }, [song.cover]);
+  if (!song.cover) {
+    return (
+      <span class="cover cover-empty" style={style} aria-hidden="true">
+        {anonymous ? <IconMusic size={28} /> : song.title.trim().charAt(0).toUpperCase() || '?'}
+      </span>
+    );
+  }
+  return (
+    <span class={'cover' + (loaded ? ' loaded' : '')} style={style}>
+      <img class={sm.lb ? 'lb' : ''} src={sm.src} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+        onLoad={() => setLoaded(true)} onError={() => setLoaded(true)} />
+      {lg && lg.src !== sm.src && (
+        <img class={'cover-hi' + (big ? ' on' : '')} src={lg.src} alt="" decoding="async" referrerpolicy="no-referrer" onLoad={() => setBig(true)} />
+      )}
+    </span>
   );
 }
 
@@ -21,34 +69,82 @@ function bars(seed: string, n: number): number[] {
   let v = 0.5;
   for (let i = 0; i < n; i++) {
     h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909);
-    v = 0.6 * v + 0.4 * (((h >>> 0) % 1000) / 1000);
-    const env = Math.min(1, (i + 3) / 10);
-    out.push(0.12 + 0.88 * v * env);
+    v = 0.55 * v + 0.45 * (((h >>> 0) % 1000) / 1000);
+    const env = Math.min(1, (i + 2) / 8);
+    out.push(0.14 + 0.86 * v * env);
   }
   return out;
 }
 
+export interface ClipRun {
+  /** performance.now() at which the audio starts. */
+  start: number;
+  ms: number;
+  /** Changes for every play, restarting the animation. */
+  key: number;
+}
+
+/** True while a clip is sounding. */
+export function useClipPlaying(clip: ClipRun | null | undefined): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (!clip) return setOn(false);
+    const now = performance.now();
+    const t1 = setTimeout(() => setOn(true), Math.max(0, clip.start - now));
+    const t2 = setTimeout(() => setOn(false), Math.max(0, clip.start + clip.ms - now));
+    return () => (clearTimeout(t1), clearTimeout(t2));
+  }, [clip?.key]);
+  return on;
+}
+
+const N_BARS = 56;
+
 /**
- * Signature element: the opening of the song as a strip of bars, with the clip heard so far
- * shown as a vermilion sliver ending at the playhead. The strip spans the last stage's length.
+ * Signature element: the opening of the song as bars spanning the longest stage. The part unlocked so
+ * far is tinted; while a clip plays, a playhead runs across it in real time and the heard bars move.
  */
-export function ClipBar({ seed, stages, stage, pulse }: { seed: string; stages: number[]; stage: number; pulse: number }) {
-  const N = 96;
-  const heights = useMemo(() => bars(seed, N), [seed]);
+export function ClipBar({ seed, stages, stage, clip }: { seed: string; stages: number[]; stage: number; clip?: ClipRun | null }) {
+  const heights = useMemo(() => bars(seed, N_BARS), [seed]);
   const total = stages[stages.length - 1];
-  const frac = Math.min(1, stages[stage] / total);
-  const W = 960, H = 200, bw = W / N;
-  const x = Math.max(3, frac * W);
+  const unlocked = Math.min(100, (stages[stage] / total) * 100);
+  const live = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLDivElement>(null);
+  const playing = useClipPlaying(clip);
+  const svg = useMemo(() => (
+    <svg viewBox={`0 0 ${N_BARS * 10} 100`} preserveAspectRatio="none" aria-hidden="true">
+      {heights.map((h, i) => {
+        const bh = h * 92;
+        return <rect key={i} x={i * 10 + 2} y={(100 - bh) / 2} width={6} height={bh} rx={3} style={{ '--i': i } as CSSProperties} />;
+      })}
+    </svg>
+  ), [heights]);
+
+  useEffect(() => {
+    if (!clip || !live.current || !head.current) return;
+    const to = Math.min(100, (clip.ms / 1000 / total) * 100);
+    const delay = Math.max(0, clip.start - performance.now());
+    const late = Math.max(0, performance.now() - clip.start);
+    const opts: KeyframeAnimationOptions = { duration: clip.ms, delay, easing: 'linear', fill: 'both' };
+    const a = live.current.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: `inset(0 ${100 - to}% 0 0)` }], opts);
+    const b = head.current.animate(
+      [{ transform: 'translateX(0%)', opacity: 1 }, { transform: `translateX(${to}%)`, opacity: 1, offset: 0.999 }, { transform: `translateX(${to}%)`, opacity: 0 }],
+      opts,
+    );
+    if (late) a.currentTime = b.currentTime = late;
+    return () => (a.cancel(), b.cancel());
+  }, [clip?.key, total]);
+
   return (
-    <div class="clipbar">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`Đoạn ${formatSeconds(stages[stage])} trên ${formatSeconds(total)}`}>
-        {heights.map((h, i) => {
-          const bh = h * (H - 24);
-          return <rect key={i} x={i * bw + bw * 0.2} y={(H - bh) / 2} width={bw * 0.6} height={bh} class={i * bw < x ? 'bar heard' : 'bar'} />;
-        })}
-        <rect x={0} y={H / 2 - 1} width={x} height={2} class="heard" />
-        <rect key={pulse} x={x - 3} y={0} width={6} height={H} class="playhead" />
-      </svg>
+    <div class={'clipbar' + (playing ? ' playing' : '')} role="img" aria-label={`Đoạn ${formatSeconds(stages[stage])} trên ${formatSeconds(total)}`}>
+      <div class="clipbar-track">
+        <div class="clipbar-layer base">{svg}</div>
+        <div class="clipbar-layer unlocked" style={{ clipPath: `inset(0 ${100 - unlocked}% 0 0)` }}>{svg}</div>
+        <div class="clipbar-layer live" ref={live} style={{ clipPath: 'inset(0 100% 0 0)' }}>{svg}</div>
+        <div class="clipbar-head" ref={head}><i /></div>
+        <div class="clipbar-marks">
+          {stages.map((s, i) => <span key={i} class={'clipbar-mark' + (i <= stage ? ' on' : '')} style={{ left: (s / total) * 100 + '%' }} />)}
+        </div>
+      </div>
       <div class="clipbar-scale num">
         <span>0</span>
         <span>{formatSeconds(total)}</span>
@@ -61,8 +157,8 @@ export function StageIndicator({ stages, stage, revealed }: { stages: number[]; 
   return (
     <ol class="stages" aria-label="Các đoạn">
       {stages.map((s, i) => (
-        <li key={i} class={i < stage ? 'past' : i === stage && !revealed ? 'current' : i === stage ? 'past' : ''}>
-          <span class="seg" />
+        <li key={i} class={i < stage || (i === stage && revealed) ? 'past' : i === stage ? 'current' : ''}>
+          <span class="seg"><i /></span>
           <span class="lbl num">{formatSeconds(s)}</span>
         </li>
       ))}
@@ -71,13 +167,35 @@ export function StageIndicator({ stages, stage, revealed }: { stages: number[]; 
 }
 
 export function Segmented<T extends string | number>({ value, options, onChange, label }: {
-  value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string;
+  value: T; options: { value: T; label: ComponentChildren; disabled?: boolean }[]; onChange: (v: T) => void; label: string;
 }) {
+  const i = Math.max(0, options.findIndex((o) => o.value === value));
   return (
-    <div class="segmented" role="radiogroup" aria-label={label}>
+    <div class="segmented" role="radiogroup" aria-label={label} style={{ '--n': options.length, '--i': i } as CSSProperties}>
+      <span class="segmented-thumb" aria-hidden="true" />
       {options.map((o) => (
         <button key={String(o.value)} role="radio" aria-checked={o.value === value} class={o.value === value ? 'on' : ''}
-          onClick={() => onChange(o.value)}>{o.label}</button>
+          disabled={o.disabled} onClick={() => onChange(o.value)}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Large selectable cards with an icon (game kinds, match formats). */
+export function ChoiceCards<T extends string>({ value, options, onChange, label, cols = 2 }: {
+  value: T; label: string; cols?: number;
+  options: { value: T; title: string; desc?: string; icon: ComponentChildren; disabled?: boolean; note?: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div class={'choice-cards cols-' + cols} role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} role="radio" aria-checked={o.value === value} disabled={o.disabled}
+          class={'choice' + (o.value === value ? ' on' : '')} onClick={() => onChange(o.value)}>
+          <span class="choice-icon">{o.icon}</span>
+          <span class="choice-title">{o.title}</span>
+          {(o.note || o.desc) && <span class="choice-desc">{o.note ?? o.desc}</span>}
+        </button>
       ))}
     </div>
   );
@@ -88,6 +206,7 @@ export function Sheet({ onClose, children, title }: { onClose: () => void; child
   return (
     <div class="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div class="sheet sheet-auto" role="dialog" aria-label={title}>
+        <span class="sheet-grip" aria-hidden="true" />
         <h2 class="sheet-title">{title}</h2>
         {children}
       </div>
@@ -97,4 +216,64 @@ export function Sheet({ onClose, children, title }: { onClose: () => void; child
 
 export function ErrorBox({ children }: { children: ComponentChildren }) {
   return <div class="errorbox" role="alert">{children}</div>;
+}
+
+/** Number that counts up to its value (ease-out, ~0.6 s). */
+export function CountUp({ value, ms = 650, prefix = '' }: { value: number; ms?: number; prefix?: string }) {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    const a = from.current, b = value;
+    from.current = value;
+    if (a === b || reduced()) return setShown(b);
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      setShown(Math.round(a + (b - a) * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{prefix}{shown.toLocaleString('vi-VN')}</>;
+}
+
+const BURST_COLORS = ['var(--accent)', 'var(--good)', 'var(--warn)', 'var(--ink)'];
+
+/** A short burst of flat paper pieces from the element's center. */
+export function Burst({ n = 18 }: { n?: number }) {
+  const parts = useMemo(() => Array.from({ length: n }, (_, i) => {
+    const ang = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+    const dist = 70 + Math.random() * 90;
+    return {
+      '--x': Math.cos(ang) * dist + 'px', '--y': Math.sin(ang) * dist - 30 + 'px', '--r': Math.round(Math.random() * 540 - 270) + 'deg',
+      '--d': Math.round(Math.random() * 80) + 'ms', background: BURST_COLORS[i % BURST_COLORS.length],
+      width: (i % 3 === 0 ? 10 : 7) + 'px', height: (i % 3 === 0 ? 4 : 7) + 'px',
+    } as CSSProperties;
+  }), []);
+  if (reduced()) return null;
+  return <span class="burst" aria-hidden="true">{parts.map((s, i) => <i key={i} style={s} />)}</span>;
+}
+
+/** Horizontal shake for wrong answers. */
+export function shake(el: Element | null | undefined): void {
+  if (!el || reduced()) return;
+  el.animate(
+    [{ transform: 'none' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }],
+    { duration: 380, easing: 'ease-out' },
+  );
+}
+
+/** Full-screen 3-2-1 before a shared clip, with a ring that empties each second. */
+export function CountdownOverlay({ n, label }: { n: number; label: ComponentChildren }) {
+  return (
+    <div class="countdown" aria-live="assertive">
+      <div class="countdown-dial">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="54" /><circle key={n} class="ring" cx="60" cy="60" r="54" /></svg>
+        <span key={n} class="countdown-n num">{n}</span>
+      </div>
+      <small>{label}</small>
+    </div>
+  );
 }

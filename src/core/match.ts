@@ -1,6 +1,7 @@
 /** Pure multiplayer match rules (no Firebase, no DOM). */
 import { pointsForStage, speedBonus } from './scoring';
-import type { PresetId } from './types';
+import { clampChoices } from './modes';
+import type { GameKind, PresetId } from './types';
 
 export const MAX_PLAYERS = 12;
 export const ROOM_CODE_LENGTH = 5;
@@ -47,6 +48,33 @@ export function clampSettings(s: MatchSettings): MatchSettings {
     elimEvery: n(s.elimEvery, 1, 10, 3),
     intervalSec: n(s.intervalSec, 3, 20, 7),
     cooldownSec: ([0, 2, 5] as const).includes(s.cooldownSec) ? s.cooldownSec : 2,
+  };
+}
+
+/** auto: rounds start and advance on timers; manual: the host taps "Bắt đầu" / "Bài tiếp". */
+export type Flow = 'auto' | 'manual';
+
+/** Extra room options, stored in meta/opts (kept apart from meta/settings, whose shape the rules fix). */
+export interface RoomOpts {
+  kind: GameKind;
+  /** cover/sound: choices per round. */
+  choices: number;
+  flow: Flow;
+  /** auto: seconds the answer stays on screen. */
+  revealSec: number;
+}
+
+export const DEFAULT_OPTS: RoomOpts = { kind: 'classic', choices: 20, flow: 'auto', revealSec: 6 };
+export const REVEAL_CHOICES = [4, 6, 10, 15];
+
+export function clampOpts(o: Partial<RoomOpts> | null | undefined): RoomOpts {
+  const v = { ...DEFAULT_OPTS, ...(o ?? {}) };
+  const kind: GameKind = (['classic', 'random', 'cover', 'sound'] as const).includes(v.kind) ? v.kind : 'classic';
+  return {
+    kind,
+    choices: clampChoices(kind, v.choices),
+    flow: v.flow === 'manual' ? 'manual' : 'auto',
+    revealSec: Math.min(30, Math.max(3, Math.round(v.revealSec) || 6)),
   };
 }
 

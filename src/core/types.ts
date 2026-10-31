@@ -36,6 +36,9 @@ export interface Preset {
   stages: number[];
 }
 
+/** classic: opening; random: random part; cover: listen, pick the cover; sound: see the cover, pick the clip. */
+export type GameKind = 'classic' | 'random' | 'cover' | 'sound';
+
 export type Phase = 'preparing' | 'ready' | 'reveal' | 'end';
 
 export interface RoundResult {
@@ -59,4 +62,13 @@ export interface GameState {
   results: RoundResult[];
   /** Song ids guessed wrong in the current round. */
   wrongGuesses: string[];
+  kind: GameKind;
+  /** cover/sound: how many choices each round offers. */
+  choices: number;
+  /** Song ids the choices are drawn from. */
+  pool: string[];
+  /** cover/sound: song ids offered this round (includes the answer). */
+  options: string[];
+  /** random: start fraction per queue position. */
+  fracs: number[];
 }

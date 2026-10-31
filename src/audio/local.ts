@@ -1,7 +1,8 @@
+import { startFromFrac } from '../core/modes';
 import type { Playlist, Song } from '../core/types';
 import { getSettings } from '../data/settings';
 import { debug } from './debug';
-import { SkipSongError, type AudioEngine, type ClipResult, type PrepareResult } from './engine';
+import { SkipSongError, type AudioEngine, type ClipResult, type OnClipStart, type PrepareOptions, type PrepareResult } from './engine';
 import { detectStartMs } from './silence';
 
 /** Files picked in this browser session, by fileKey ("name:size"). Not persisted. */
@@ -52,7 +53,7 @@ class LocalEngine implements AudioEngine {
     return detectStartMs(chans, buf.sampleRate, { thresholdDb: s.silenceThresholdDb, prerollMs: s.prerollMs });
   }
 
-  async prepare(song: Song, playlist: Pick<Playlist, 'defaultOffsetMs'>): Promise<PrepareResult> {
+  async prepare(song: Song, playlist: Pick<Playlist, 'defaultOffsetMs'>, opts: PrepareOptions = {}): Promise<PrepareResult> {
     let buf: AudioBuffer;
     try {
       buf = await this.decode(song);
@@ -61,7 +62,9 @@ class LocalEngine implements AudioEngine {
     }
     const detected = this.detect(buf);
     song.detectedStartMs = detected;
-    const startMs = song.startOffsetMs ?? detected + playlist.defaultOffsetMs;
+    const startMs = opts.startFrac != null
+      ? startFromFrac(opts.startFrac, buf.duration, opts.clipSec ?? 12) * 1000
+      : song.startOffsetMs ?? detected + playlist.defaultOffsetMs;
     this.buffer = buf;
     this.startSec = Math.min(Math.max(0, startMs / 1000), Math.max(0, buf.duration - 0.05));
     debug({ engine: 'local', state: 'ready', startMs });
@@ -69,11 +72,11 @@ class LocalEngine implements AudioEngine {
   }
 
   /** Background-decode a song likely to be needed next. */
-  preload(song: Song): void {
+  preload(song: Song, _playlist?: unknown, _opts?: PrepareOptions): void {
     if (hasFile(song)) this.decode(song).catch(() => {});
   }
 
-  playBuffer(buf: AudioBuffer, offsetSec: number, durationMs: number, at?: number): Promise<ClipResult> {
+  playBuffer(buf: AudioBuffer, offsetSec: number, durationMs: number, at?: number, onStart?: OnClipStart): Promise<ClipResult> {
     this.stop();
     const ctx = this.context();
     const dur = durationMs / 1000;
@@ -90,15 +93,16 @@ class LocalEngine implements AudioEngine {
     src.connect(g).connect(ctx.destination);
     src.start(t, offsetSec, dur);
     this.playing = src;
+    onStart?.(performance.now() + (t - ctx.currentTime) * 1000);
     debug({ requestedMs: durationMs, measuredMs: durationMs });
     return new Promise((resolve) => {
       src.onended = () => resolve({ requestedMs: durationMs, measuredMs: durationMs });
     });
   }
 
-  playClip(durationMs: number, at?: number): Promise<ClipResult> {
+  playClip(durationMs: number, at?: number, onStart?: OnClipStart): Promise<ClipResult> {
     if (!this.buffer) return Promise.reject(new Error('not prepared'));
-    return this.playBuffer(this.buffer, this.startSec, durationMs, at);
+    return this.playBuffer(this.buffer, this.startSec, durationMs, at, onStart);
   }
 
   stop(): void {

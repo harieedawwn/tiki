@@ -1,6 +1,6 @@
-import { DEFAULT_MATCH, clampSettings, type MatchSettings } from '../core/match';
+import { DEFAULT_MATCH, clampOpts, clampSettings, type MatchSettings, type RoomOpts } from '../core/match';
 
-const PID = 'tiki.pid', NAME = 'tiki.name', LOBBY = 'tiki.lobby', LAST_ROOM = 'tiki.lastRoom';
+const PID = 'tiki.pid', NAME = 'tiki.name', LOBBY = 'tiki.lobby', LOBBY_OPTS = 'tiki.lobbyOpts', LAST_ROOM = 'tiki.lastRoom';
 
 function read(key: string): string | null {
   try {
@@ -40,6 +40,15 @@ export function lobbyDefaults(): MatchSettings {
   }
 }
 export const saveLobbyDefaults = (s: MatchSettings) => write(LOBBY, JSON.stringify(s));
+
+export function lobbyOpts(): RoomOpts {
+  try {
+    return clampOpts(JSON.parse(read(LOBBY_OPTS) ?? '{}'));
+  } catch {
+    return clampOpts(null);
+  }
+}
+export const saveLobbyOpts = (o: RoomOpts) => write(LOBBY_OPTS, JSON.stringify(o));
 
 export const lastRoom = () => read(LAST_ROOM) ?? '';
 export const setLastRoom = (code: string) => write(LAST_ROOM, code);

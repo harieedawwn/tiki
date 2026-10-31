@@ -7,10 +7,10 @@ import { getPlaylist, listPlaylists, onPlaylistsChanged, savePlaylist } from '..
 import { importLocalFiles } from '../../data/localImport';
 import { ImportError, importYouTubePlaylist } from '../../data/youtubeApi';
 import type { Route } from '../App';
-import { ErrorBox } from '../components';
+import { Cover, ErrorBox } from '../components';
 import { useSettings } from '../hooks';
 import { formatSeconds } from '../../core/stages';
-import { IconFolder, IconForward, IconLink, IconMusic, IconUsers } from '../icons';
+import { IconFolder, IconForward, IconLink, IconMusic, IconUser, IconUsers, Logo } from '../icons';
 import type { FeaturedPlaylist } from '../../multi/types';
 
 export function usePlaylists(): Playlist[] | null {
@@ -81,8 +81,9 @@ function Multiplayer({ go }: { go: (r: Route) => void }) {
     go({ name: 'room', code });
   };
   return (
-    <section class="card stack-sm">
-      <h2 class="section-title"><IconUsers size={20} /> Chơi cùng bạn bè</h2>
+    <section class="card stack-sm card-in">
+      <h2 class="section-title"><span class="section-icon"><IconUsers size={20} /></span> Chơi cùng bạn bè</h2>
+      <p class="hint">Cả phòng nghe cùng một lúc, ai đoán nhanh hơn được nhiều điểm hơn.</p>
       <input class="input" placeholder="Tên của bạn" maxLength={24} value={name} aria-label="Tên của bạn" onInput={(e) => setName(e.currentTarget.value)} />
       <button class="btn btn-primary btn-block" disabled={!name.trim() || busy} onClick={create}>{busy ? 'Đang tạo...' : 'Tạo phòng'}</button>
       <form class="row" onSubmit={join}>
@@ -95,7 +96,7 @@ function Multiplayer({ go }: { go: (r: Route) => void }) {
   );
 }
 
-const LOGO_BARS = [30, 55, 40, 80, 60, 95, 70, 50, 85, 45, 65, 35, 75, 55, 90, 40, 60, 30];
+const LOGO_BARS = [30, 55, 40, 80, 60, 95, 70, 50, 85, 45, 65, 35, 75, 55, 90, 40, 60, 30, 50, 72, 44, 64, 36, 58];
 
 export function Home({ go }: { go: (r: Route) => void }) {
   const settings = useSettings();
@@ -133,13 +134,19 @@ export function Home({ go }: { go: (r: Route) => void }) {
 
   return (
     <div class="stack">
-      <section class="logo-stage" aria-label="Tiki">
-        <h1 class="logo-word">TIKI</h1>
-        <div class="logo-wave" aria-hidden="true">
-          {LOGO_BARS.map((h, i) => <i key={i} class={i < 3 ? 'hot' : ''} style={{ height: h + '%' }} />)}
+      <section class="hero-card" aria-label="Tiki">
+        <div class="hero-top">
+          <Logo size={56} />
+          <div>
+            <h1 class="hero-word">Tiki</h1>
+            <p class="hero-tag">Nghe một chút. Đoán thật nhanh.</p>
+          </div>
         </div>
-        <ol class="logo-stages num" aria-label="Các đoạn nghe">
-          {settings.presets.tichtac.stages.map((st) => <li key={st}>{formatSeconds(st)}</li>)}
+        <div class="hero-eq" aria-hidden="true">
+          {LOGO_BARS.map((h, i) => <i key={i} style={{ height: h + '%', animationDelay: (i % 7) * -130 + 'ms' }} />)}
+        </div>
+        <ol class="hero-stages num" aria-label="Các đoạn nghe">
+          {settings.presets.tichtac.stages.map((st, i) => <li key={st} style={{ animationDelay: 200 + i * 90 + 'ms' }}>{formatSeconds(st)}</li>)}
         </ol>
       </section>
 
@@ -148,11 +155,11 @@ export function Home({ go }: { go: (r: Route) => void }) {
       {featured.length > 0 && (
         <section class="stack-sm">
           <h2 class="section-title">Playlist đề xuất</h2>
-          <ol class="tracklist">
+          <ol class="playlist-list">
             {featured.map((f, i) => (
-              <li key={f.id}>
+              <li key={f.id} style={{ animationDelay: Math.min(i, 8) * 40 + 'ms' }}>
                 <button class="track" onClick={() => openFeatured(f)}>
-                  <span class="track-no num">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="mosaic mosaic-sm" aria-hidden="true">{(f.songs ?? []).filter((s) => s.cover).slice(0, 4).map((s) => <Cover key={s.id} song={s} />)}</span>
                   <span class="track-main">
                     <span class="track-name">{f.name}</span>
                     <span class="track-meta num">{f.kind === 'youtube' ? 'YouTube' : 'Trên máy'} · {f.songs?.length ?? 0} bài</span>
@@ -166,17 +173,17 @@ export function Home({ go }: { go: (r: Route) => void }) {
       )}
 
       <section class="stack-sm">
-        <h2 class="section-title">Chơi một mình</h2>
+        <h2 class="section-title"><span class="section-icon"><IconUser size={20} /></span> Chơi một mình</h2>
         {playlists === null ? (
           <p class="muted">Đang tải...</p>
         ) : playlists.length === 0 ? (
           <p class="muted">Chưa có nhạc. Thêm danh sách ở dưới.</p>
         ) : (
-          <ol class="tracklist">
+          <ol class="playlist-list">
             {playlists.map((p, i) => (
-              <li key={p.id}>
+              <li key={p.id} style={{ animationDelay: Math.min(i, 8) * 40 + 'ms' }}>
                 <button class="track" onClick={() => go({ name: 'setup', playlistId: p.id })}>
-                  <span class="track-no num">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="mosaic mosaic-sm" aria-hidden="true">{p.songs.filter((s) => s.cover).slice(0, 4).map((s) => <Cover key={s.id} song={s} />)}</span>
                   <span class="track-main">
                     <span class="track-name">{p.name}</span>
                     <span class="track-meta num">
@@ -193,7 +200,7 @@ export function Home({ go }: { go: (r: Route) => void }) {
       </section>
 
       <section class="card stack-sm">
-        <h2 class="section-title">Thêm nhạc</h2>
+        <h2 class="section-title"><span class="section-icon"><IconMusic size={20} /></span> Thêm nhạc</h2>
         <form class="row" onSubmit={(e) => (e.preventDefault(), link.trim() && run(() => importYouTubePlaylist(link, setBusy)))}>
           <input class="input grow" type="url" inputMode="url" placeholder="Link playlist YouTube"
             value={link} onInput={(e) => setLink(e.currentTarget.value)} aria-label="Liên kết danh sách phát" />

@@ -1,6 +1,8 @@
 import { localEngine } from '../audio/local';
 import { youtubeEngine } from '../audio/youtube';
 import { pickNextHost } from '../core/match';
+import { SOUND_PREVIEW_FRAC, SOUND_PREVIEW_SEC } from '../core/modes';
+import { getSettings } from '../data/settings';
 import type { Song } from '../core/types';
 import { fromBase64 } from './clips';
 import { isConnected, serverNow, subscribeConnection, toPerf } from './firebase';
@@ -20,12 +22,16 @@ export interface SessionState {
   audioReady: boolean;
   audioError: string | null;
   needTap: boolean;
+  /** The clip sounding now (drives the timeline), or null. */
+  clip: { start: number; ms: number; key: number } | null;
+  /** Sound kind: the numbered clip loading or playing on this device. */
+  preview: { i: number; loading: boolean } | null;
 }
 
 /** One joined room on this device: subscription, presence, host failover, audio sync. */
 export class RoomSession {
   readonly pid = playerId();
-  state: SessionState = { room: null, loaded: false, connected: true, kicked: false, audioReady: false, audioError: null, needTap: false };
+  state: SessionState = { room: null, loaded: false, connected: true, kicked: false, audioReady: false, audioError: null, needTap: false, clip: null, preview: null };
   private listeners = new Set<() => void>();
   private unsubs: (() => void)[] = [];
   private host: HostController | null = null;
@@ -34,6 +40,7 @@ export class RoomSession {
   private preparedKey = '';
   private playedKey = '';
   private buffers: AudioBuffer[] = [];
+  private previewSeq = 0;
 
   constructor(readonly code: string) {}
 
@@ -61,7 +68,33 @@ export class RoomSession {
     this.host?.stop();
     this.host = null;
     localEngine.stop();
-    youtubeEngine().stop();
+    youtubeEngine().stopAll();
+  }
+
+  /** Players who already guessed right, were eliminated or sit out a sudden death only watch. */
+  isSpectating(room = this.state.room): boolean {
+    const round = room?.round;
+    if (!room || !round) return false;
+    if (round.results?.[this.pid] || room.players?.[this.pid]?.eliminated) return true;
+    return !!round.suddenDeath && !(room.meta.suddenDeath ?? []).includes(this.pid);
+  }
+
+  /** Manual flow: "Bài tiếp" (runs only on the host's device). */
+  hostNext(): void {
+    void this.host?.next();
+  }
+
+  /** Spectators may mute the shared clips (friends in one room hear one phone). */
+  setListening(on: boolean): void {
+    if (!on) {
+      youtubeEngine().stop();
+      localEngine.stop();
+      this.set({ clip: null });
+    }
+  }
+
+  private shouldPlay(room: Room): boolean {
+    return !this.isSpectating(room) || getSettings().listenSpectating;
   }
 
   private onRoom(room: Room | null): void {
@@ -113,26 +146,37 @@ export class RoomSession {
       this.set({ audioReady: false, audioError: null });
       void this.prepare(round, key);
     }
-    if (round.phase === 'playing' && this.state.audioReady) {
+    if (round.phase === 'playing' && this.state.audioReady && round.kind !== 'sound') {
       const pk = `${key}:${round.stage}:${round.stageStartAt}`;
       if (pk !== this.playedKey && serverNow() < round.stageStartAt + 1000) {
         this.playedKey = pk;
-        void this.playStage(round, toPerf(round.stageStartAt));
+        if (this.shouldPlay(room)) void this.playStage(round, toPerf(round.stageStartAt));
+        else {
+          // Not listening: still run the timeline with everyone else.
+          const ms = Math.round(round.stages[round.stage] * 1000);
+          const at = toPerf(round.stageStartAt);
+          this.set({ clip: { start: at, ms, key: at } });
+        }
       }
     }
+    if (round.phase === 'reveal' && this.state.preview) this.set({ preview: null });
   }
 
   private async prepare(round: RoundState, key: string): Promise<void> {
     try {
-      if (round.videoId) {
+      if (round.kind === 'sound') {
+        // Numbered clips load on tap; warm the first one.
+        const v = round.optionVideos?.[0];
+        if (v) youtubeEngine().preload(ytSong(v, 0), { defaultOffsetMs: 0 }, { startFrac: SOUND_PREVIEW_FRAC, clipSec: SOUND_PREVIEW_SEC });
+      } else if (round.videoId) {
         const yt = youtubeEngine();
-        const song = { id: round.videoId, title: '', artist: '', cover: '', source: { type: 'youtube', videoId: round.videoId }, startOffsetMs: round.startMs ?? 0 } as Song;
         if (yt.needsTapUnlock()) {
           this.set({ needTap: true });
           await yt.unlockWithTap(round.videoId);
           this.set({ needTap: false });
         }
-        await yt.prepare(song, { defaultOffsetMs: 0 });
+        const opts = round.startFrac != null ? { startFrac: round.startFrac, clipSec: round.stages[round.stages.length - 1] } : {};
+        await yt.prepare(ytSong(round.videoId, round.startMs ?? 0), { defaultOffsetMs: 0 }, opts);
       } else if (round.clips) {
         const ctx = localEngine.context();
         this.buffers = await Promise.all(round.clips.map((b64) => ctx.decodeAudioData(fromBase64(b64))));
@@ -150,7 +194,39 @@ export class RoomSession {
   /** Plays the current stage at `at` (performance.now()), or now for a local replay. */
   async playStage(round: RoundState, at?: number): Promise<void> {
     const ms = Math.round(round.stages[round.stage] * 1000);
-    if (round.videoId) await youtubeEngine().playClip(ms, at);
-    else if (this.buffers[round.stage]) await localEngine.playBuffer(this.buffers[round.stage], 0, ms, at);
+    const onStart = (t: number) => this.set({ clip: { start: t, ms, key: t } });
+    if (round.videoId) await youtubeEngine().playClip(ms, at, onStart);
+    else if (this.buffers[round.stage]) await localEngine.playBuffer(this.buffers[round.stage], 0, ms, at, onStart);
+  }
+
+  /** Sound kind: plays numbered clip `i` on this device only. */
+  async previewOption(round: RoundState, i: number): Promise<void> {
+    const v = round.optionVideos?.[i];
+    if (!v) return;
+    const seq = ++this.previewSeq;
+    const yt = youtubeEngine();
+    const opts = { startFrac: SOUND_PREVIEW_FRAC, clipSec: SOUND_PREVIEW_SEC };
+    yt.stop();
+    this.set({ preview: { i, loading: true } });
+    try {
+      if (yt.needsTapUnlock()) {
+        this.set({ needTap: true });
+        await yt.unlockWithTap(v);
+        this.set({ needTap: false });
+      }
+      await yt.prepare(ytSong(v, 0), { defaultOffsetMs: 0 }, opts);
+      if (seq !== this.previewSeq) return;
+      const ms = SOUND_PREVIEW_SEC * 1000;
+      await yt.playClip(ms, undefined, (t) => seq === this.previewSeq && this.set({ preview: { i, loading: false }, clip: { start: t, ms, key: t } }));
+      const nx = round.optionVideos?.[i + 1];
+      if (nx && seq === this.previewSeq) yt.preload(ytSong(nx, 0), { defaultOffsetMs: 0 }, opts);
+    } catch {
+      /* unplayable clip: the button just stops spinning */
+    } finally {
+      if (seq === this.previewSeq) this.set({ preview: null });
+    }
   }
 }
+
+const ytSong = (videoId: string, startMs: number): Song =>
+  ({ id: videoId, title: '', artist: '', cover: '', source: { type: 'youtube', videoId }, startOffsetMs: startMs }) as Song;

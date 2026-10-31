@@ -1,13 +1,14 @@
 import { ref, update, increment } from 'firebase/database';
 import { localEngine } from '../audio/local';
-import { LEAD_MS, guessPoints, isElimRound, matchOutcome, pickEliminated, stageWindowMs, type Standing } from '../core/match';
+import { LEAD_MS, clampOpts, guessPoints, isElimRound, matchOutcome, pickEliminated, stageWindowMs, type Standing } from '../core/match';
+import { SOUND_WINDOW_SEC, pickOptions, randomStartFrac, soundPoints, startFromFrac } from '../core/modes';
+import { speedBonus } from '../core/scoring';
 import type { Song } from '../core/types';
 import { getSettings } from '../data/settings';
 import { cutClipWav } from './clips';
 import { database, serverNow } from './firebase';
 import type { HistoryEntry, Room, RoomPlayer, RoundState } from './types';
 
-const REVEAL_MS = 6000;
 const LOADING_TIMEOUT_MS = 20000;
 
 type P = RoomPlayer & { id: string };
@@ -37,6 +38,18 @@ export class HostController {
   setRoom(room: Room | null): void {
     this.room = room;
     void this.tick();
+  }
+
+  /** Manual flow: "Bài tiếp" from the host's screen. */
+  async next(): Promise<void> {
+    const r = this.room;
+    if (!r || r.meta.hostId !== this.pid || r.round?.phase !== 'reveal' || this.busy) return;
+    this.busy = true;
+    try {
+      await this.advance(r, r.round);
+    } finally {
+      this.busy = false;
+    }
   }
 
   private write(patch: Record<string, unknown>) {
@@ -70,7 +83,10 @@ export class HostController {
     const s = r.meta.settings;
     const activeOnline = this.active(r).filter((p) => p.connected);
 
+    const opts = clampOpts(r.meta.opts);
     if (round.phase === 'loading') {
+      // Manual flow: the host's "Bắt đầu" starts the round (startRoundNow).
+      if (opts.flow === 'manual') return;
       const allReady = activeOnline.every((p) => round.ready?.[p.id] === round.index);
       if (allReady || now - round.loadingSince > LOADING_TIMEOUT_MS) {
         await this.write({ 'round/phase': 'playing', 'round/stage': 0, 'round/stageStartAt': now + LEAD_MS });
@@ -90,7 +106,7 @@ export class HostController {
       return;
     }
 
-    if (round.phase === 'reveal' && now >= (round.revealUntil ?? 0)) await this.advance(r, round);
+    if (round.phase === 'reveal' && opts.flow === 'auto' && now >= (round.revealUntil ?? 0)) await this.advance(r, round);
   }
 
   /** Returns true if it wrote something (the next snapshot continues). */
@@ -109,7 +125,7 @@ export class HostController {
       const patch: Record<string, unknown> = { 'meta/status': 'playing', 'meta/pausedAt': null };
       // Restart the current stage (or reveal countdown) after a pause.
       if (round?.phase === 'playing') patch['round/stageStartAt'] = now + LEAD_MS;
-      if (round?.phase === 'reveal') patch['round/revealUntil'] = now + REVEAL_MS;
+      if (round?.phase === 'reveal') patch['round/revealUntil'] = now + clampOpts(r.meta.opts).revealSec * 1000;
       if (round?.phase === 'loading') patch['round/loadingSince'] = now;
       await this.write(patch);
     }
@@ -136,7 +152,10 @@ export class HostController {
       if (wrong[g.pid] && g.at - wrong[g.pid].at < cooldown) continue;
       if (g.songId === answer) {
         const elapsed = g.at - round.stageStartAt;
-        const points = guessPoints(round.stage, elapsed, stageWindowMs(round.stages[round.stage], r.meta.settings), r.meta.settings.speedBonus);
+        const windowMs = stageWindowMs(round.stages[round.stage], r.meta.settings);
+        const points = round.kind === 'sound'
+          ? soundPoints(wrong[g.pid]?.n ?? 0) + (r.meta.settings.speedBonus ? speedBonus(elapsed, windowMs) : 0)
+          : guessPoints(round.stage, elapsed, windowMs, r.meta.settings.speedBonus);
         results[g.pid] = { points, stage: round.stage, at: g.at };
         patch[`round/results/${g.pid}`] = results[g.pid];
         patch[`players/${g.pid}/score`] = increment(points);
@@ -155,7 +174,8 @@ export class HostController {
     const idx = r.hostState?.current ?? -1;
     const song = r.playlist?.songs[idx];
     const patch: Record<string, unknown> = {
-      'round/phase': 'reveal', 'round/answer': song?.id ?? null, 'round/revealUntil': serverNow() + REVEAL_MS,
+      'round/phase': 'reveal', 'round/answer': song?.id ?? null,
+      'round/revealUntil': clampOpts(r.meta.opts).flow === 'auto' ? serverNow() + clampOpts(r.meta.opts).revealSec * 1000 : null,
     };
     if (song) {
       const h: HistoryEntry = {
@@ -201,24 +221,39 @@ export class HostController {
   private async startRound(r: Room, index: number, suddenDeath: string[] | null): Promise<void> {
     const hs = r.hostState ?? {};
     const queue = hs.queue ?? [];
-    const stages = getSettings().presets[r.meta.settings.presetId].stages;
+    const opts = clampOpts(r.meta.opts);
+    const songs = r.playlist?.songs ?? [];
+    const presetStages = getSettings().presets[r.meta.settings.presetId].stages;
+    const stages = opts.kind === 'sound' ? [SOUND_WINDOW_SEC] : presetStages;
+    // Candidates for the choices: songs with a cover (cover kind) or a YouTube source (sound kind).
+    const pool = songs.map((_, i) => i).filter((i) =>
+      opts.kind === 'cover' ? !!songs[i].cover : opts.kind === 'sound' ? hs.sources?.[i]?.type === 'youtube' : true);
     let pos = hs.pos ?? 0;
     while (pos < queue.length) {
       const songIdx = queue[pos++];
       const src = hs.sources?.[songIdx];
-      const song = r.playlist?.songs[songIdx];
-      if (!src || !song) continue;
+      const song = songs[songIdx];
+      if (!src || !song || ((opts.kind === 'cover' || opts.kind === 'sound') && !pool.includes(songIdx))) continue;
       const round: RoundState = {
         index, phase: 'loading', stage: 0, stages, stageStartAt: 0, loadingSince: serverNow(),
-        suddenDeath: !!suddenDeath, answer: null,
+        suddenDeath: !!suddenDeath, answer: null, kind: opts.kind,
         scoresBefore: Object.fromEntries(playersOf(r).map((p) => [p.id, p.score ?? 0])),
       };
-      if (src.type === 'youtube') {
+      if (opts.kind === 'random') round.startFrac = randomStartFrac();
+      if (opts.kind === 'cover' || opts.kind === 'sound') round.options = pickOptions(pool, songIdx, opts.choices);
+      if (opts.kind === 'sound') {
+        // Nothing shared to play: each player listens to the numbered clips on their own.
+        round.optionVideos = round.options!.map((i) => {
+          const s = hs.sources![i];
+          return s.type === 'youtube' ? s.videoId : '';
+        });
+        round.cover = song.cover;
+      } else if (src.type === 'youtube') {
         round.videoId = src.videoId;
         round.startMs = src.startOffsetMs ?? hs.defaultOffsetMs ?? 0;
       } else {
         try {
-          round.clips = await this.cutClips({ ...song, source: src, startOffsetMs: src.startOffsetMs }, stages, hs.defaultOffsetMs ?? 0);
+          round.clips = await this.cutClips({ ...song, source: src, startOffsetMs: src.startOffsetMs }, stages, hs.defaultOffsetMs ?? 0, round.startFrac ?? null);
         } catch {
           continue; // this host does not have the file: try the next song
         }
@@ -233,9 +268,11 @@ export class HostController {
     await this.end(suddenDeath ?? top.filter((p) => p.score === top[0]?.score).map((p) => p.id));
   }
 
-  private async cutClips(song: Song, stages: number[], defaultOffsetMs: number): Promise<string[]> {
+  private async cutClips(song: Song, stages: number[], defaultOffsetMs: number, startFrac: number | null): Promise<string[]> {
     const buf = await localEngine.decode(song);
-    const startMs = song.startOffsetMs ?? localEngine.detect(buf) + defaultOffsetMs;
+    const startMs = startFrac !== null
+      ? startFromFrac(startFrac, buf.duration, stages[stages.length - 1]) * 1000
+      : song.startOffsetMs ?? localEngine.detect(buf) + defaultOffsetMs;
     return Promise.all(stages.map((sec) => cutClipWav(buf, startMs / 1000, sec)));
   }
 }

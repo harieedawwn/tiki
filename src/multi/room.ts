@@ -3,11 +3,11 @@ import {
   serverTimestamp, set, update,
 } from 'firebase/database';
 import { shuffle } from '../core/game';
-import { MAX_PLAYERS, ROOM_CODE_RE, clampSettings, makeRoomCode, type MatchSettings } from '../core/match';
+import { LEAD_MS, MAX_PLAYERS, ROOM_CODE_RE, clampOpts, clampSettings, makeRoomCode, type MatchSettings, type RoomOpts } from '../core/match';
 import type { Playlist } from '../core/types';
 import { shrinkCover } from './clips';
 import { database, serverNow } from './firebase';
-import { lobbyDefaults, playerId, setLastRoom } from './identity';
+import { lobbyDefaults, lobbyOpts, playerId, setLastRoom } from './identity';
 import type { CommandType, FeaturedPlaylist, HostState, Room, RoomPlaylist } from './types';
 
 export class RoomError extends Error {}
@@ -35,7 +35,7 @@ export async function createRoom(name: string): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
     const code = makeRoomCode();
     const res = await runTransaction(rref(code, 'meta'), (cur) =>
-      cur ? undefined : { hostId: pid, locked: false, status: 'lobby', createdAt: serverNow(), settings: lobbyDefaults() },
+      cur ? undefined : { hostId: pid, locked: false, status: 'lobby', createdAt: serverNow(), settings: lobbyDefaults(), opts: lobbyOpts() },
     );
     if (!res.committed) continue;
     await set(rref(code, `players/${pid}`), { name, score: 0, connected: true, joinedAt: serverNow() });
@@ -101,10 +101,23 @@ export async function setRoomSettings(code: string, s: MatchSettings): Promise<v
   await set(rref(code, 'meta/settings'), clampSettings(s));
 }
 
+export async function setRoomOpts(code: string, o: RoomOpts): Promise<void> {
+  await set(rref(code, 'meta/opts'), clampOpts(o));
+}
+
+export const roomOpts = (room: Room) => clampOpts(room.meta.opts);
+
+/** Manual flow: the host starts the loaded round (everyone hears it after the shared countdown). */
+export const startRoundNow = (code: string) =>
+  update(rref(code), { 'round/phase': 'playing', 'round/stage': 0, 'round/stageStartAt': serverNow() + LEAD_MS });
+
 /** Host: resets scores and starts the match; the host loop then starts round 0. */
 export async function startMatch(code: string, room: Room): Promise<void> {
   const n = room.playlist?.songs.length ?? 0;
   if (!n) throw new RoomError('Chọn danh sách bài hát trước.');
+  const o = roomOpts(room);
+  if (o.kind === 'sound' && room.playlist?.kind !== 'youtube') throw new RoomError('Chế độ Xem ảnh, chọn nhạc chỉ dùng được với playlist YouTube.');
+  if (o.kind === 'cover' && (room.playlist?.songs.filter((s) => s.cover).length ?? 0) < 4) throw new RoomError('Cần ít nhất 4 bài có ảnh bìa.');
   const patch: Record<string, unknown> = {
     'meta/status': 'playing', 'meta/winners': null, 'meta/suddenDeath': null, 'meta/pausedAt': null,
     round: null, history: null, guesses: null, commands: null,

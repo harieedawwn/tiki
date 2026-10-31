@@ -1,5 +1,5 @@
-import type { MatchSettings } from '../core/match';
-import type { SongSource } from '../core/types';
+import type { MatchSettings, RoomOpts } from '../core/match';
+import type { GameKind, SongSource } from '../core/types';
 
 export type RoomStatus = 'lobby' | 'playing' | 'paused' | 'ended';
 
@@ -10,6 +10,8 @@ export interface RoomMeta {
   status: RoomStatus;
   createdAt: number;
   settings: MatchSettings;
+  /** Game kind, choices and flow (absent in older rooms: defaults). */
+  opts?: RoomOpts | null;
   kicked?: Record<string, true>;
   winners?: string[] | null;
   /** Player ids in the current sudden-death round. */
@@ -72,6 +74,15 @@ export interface RoundState {
   scoresBefore?: Record<string, number>;
   suddenDeath?: boolean;
   eliminated?: string | null;
+  kind?: GameKind;
+  /** random: start fraction every client resolves against the song length. */
+  startFrac?: number | null;
+  /** cover/sound: indexes into playlist.songs offered this round (includes the answer). */
+  options?: number[] | null;
+  /** sound: YouTube video ids of the options, same order. */
+  optionVideos?: string[] | null;
+  /** sound: the cover shown as the question. */
+  cover?: string | null;
 }
 
 /** Host-only bookkeeping, kept in the database so a new host can continue. Client-side privacy only. */

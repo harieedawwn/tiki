@@ -16,10 +16,11 @@ export function permsFor(room: Room, pid: string, isDev: boolean): Perms {
   return { pid, isHost, isMod: isHost || !!room.meta.mods?.[pid], isDev };
 }
 
-/** Re-renders every `ms` (countdowns). */
+/** Re-renders every `ms` (countdowns); 0 = off. */
 export function useTicker(ms = 250): number {
   const [t, setT] = useState(0);
   useEffect(() => {
+    if (ms <= 0) return;
     const id = setInterval(() => setT((n) => n + 1), ms);
     return () => clearInterval(id);
   }, [ms]);
@@ -47,7 +48,7 @@ export function RankList({ rows, me, ellipsis }: { rows: Row[]; me: string; elli
   return (
     <ol class="ranklist">
       {rows.map((r, i) => (
-        <li key={r.id} class={(r.id === me ? 'me ' : '') + (r.dim ? 'dim' : '') + (ellipsis && i === rows.length - 1 && i > 0 && rows[i - 1].rank < r.rank - 1 ? ' gap' : '')}>
+        <li key={r.id} style={{ animationDelay: Math.min(i, 10) * 35 + 'ms' }} class={(r.id === me ? 'me ' : '') + (r.dim ? 'dim' : '') + (ellipsis && i === rows.length - 1 && i > 0 && rows[i - 1].rank < r.rank - 1 ? ' gap' : '')}>
           <span class="rank num">{r.rank}</span>
           <span class="rank-name">{r.name}{r.tag && <em class="tag">{r.tag}</em>}</span>
           {r.delta !== undefined && <RankDelta d={r.delta} />}

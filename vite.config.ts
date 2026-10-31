@@ -22,8 +22,8 @@ export default defineConfig({
         display: 'fullscreen',
         display_override: ['fullscreen', 'standalone'],
         orientation: 'portrait',
-        theme_color: '#1a1714',
-        background_color: '#f2ede3',
+        theme_color: '#0e1024',
+        background_color: '#0e1024',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -34,6 +34,18 @@ export default defineConfig({
         // App shell + fonts (woff2 only; .woff fallbacks are never used by supporting browsers)
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // Cover thumbnails: cache-first, so replays and the guess grid open instantly.
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/i\d?\.ytimg\.com\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'covers',
+              expiration: { maxEntries: 1500, maxAgeSeconds: 30 * 24 * 3600 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

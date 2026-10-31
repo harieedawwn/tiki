@@ -1,11 +1,11 @@
 import type { FunctionComponent } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { ROOM_CODE_RE, normalizeRoomCode } from '../core/match';
-import type { PresetId } from '../core/types';
+import type { GameKind, PresetId } from '../core/types';
 import { DebugOverlay } from './dev/DebugOverlay';
 import { DevPanel } from './dev/DevPanel';
 import { useSettings, useStore } from './hooks';
-import { IconSettings, IconWrench, IconDownload } from './icons';
+import { IconSettings, IconWrench, IconDownload, Logo } from './icons';
 import { installKind, promptInstall, subscribeInstall } from './pwa';
 import { Game } from './screens/Game';
 import { Home } from './screens/Home';
@@ -15,7 +15,7 @@ import { Setup } from './screens/Setup';
 export type Route =
   | { name: 'home' }
   | { name: 'setup'; playlistId: string }
-  | { name: 'game'; playlistId: string; count: number | 'all'; presetId: PresetId }
+  | { name: 'game'; playlistId: string; count: number | 'all'; presetId: PresetId; kind: GameKind; choices: number }
   | { name: 'settings' }
   | { name: 'dev' }
   | { name: 'room'; code: string };
@@ -48,7 +48,7 @@ export function App() {
       {!inGame && (
         <header class="topbar">
           <button class="wordmark" onClick={() => go({ name: 'home' })} aria-label="Trang chủ">
-            <span class="wordmark-mark" aria-hidden="true"><i /><i /><i /><i /></span>
+            <Logo size={34} />
             Tiki
           </button>
           <div class="topbar-actions">
@@ -64,7 +64,7 @@ export function App() {
           </div>
         </header>
       )}
-      <main class={inGame ? 'screen screen-game' : 'screen'}>
+      <main key={route.name} class={inGame ? 'screen screen-game' : 'screen'}>
         {route.name === 'home' && <Home go={go} />}
         {route.name === 'setup' && <Setup playlistId={route.playlistId} go={go} />}
         {route.name === 'game' && <Game {...route} go={go} />}

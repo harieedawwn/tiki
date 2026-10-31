@@ -10,6 +10,14 @@ Mobile-first song-guessing PWA. Hear 0.5-12 s from the start of a song and name 
 - `src/core/match.ts`: pure multiplayer rules (room code, ranking, rank change, elimination, outcome, next host).
 - `src/multi`: `firebase.ts` (lazy RTDB init, server time), `room.ts` (writes, moderation, featured), `host.ts` (host loop), `session.ts` (presence, failover, audio sync), `clips.ts` (WAV clips, covers).
 
+## Game kinds (src/core/modes.ts)
+- classic: opening clip, guess by name (search). random: same, from a random start (`startFrac` resolved against the song length with `startFromFrac`). cover: classic clip, guess by picking one of N covers (12/20/40). sound: the cover is shown, N numbered 4 s clips from 30% into each song (4/6/10/20), 3 attempts (1000/500/250).
+- Multiplayer: `meta/opts` = { kind, choices, flow: auto|manual, revealSec }. The host writes `round.kind`, `round.startFrac`, `round.options` (song indexes), and for sound `round.optionVideos` + `round.cover` (the question; answer stays out of `round`). Sound kind is YouTube-only and has one 25 s window; clients play clips on their own.
+- Spectating: after a correct guess (or when eliminated) a player only watches; they may mute the shared clips (`settings.listenSpectating`), the timeline keeps running.
+
+## Search (src/core/text.ts)
+Diacritics-insensitive; ranks title prefix, word/artist prefix, substring (also ignoring spaces), then fuzzy (optimal string alignment distance, 1-3 typos by word length, also against word prefixes). `searchArtists` returns matching artists (credits split on , & ft. feat. x ...) shown as chips that filter to their songs.
+
 ## Types (src/core/types.ts)
 ```ts
 Song { id; title; artist; cover; source: {type:'youtube',videoId} | {type:'local',fileKey}; startOffsetMs: number|null; detectedStartMs? }
@@ -30,7 +38,9 @@ interface AudioEngine {
 `engineFor(song)` in `src/audio/index.ts`.
 
 ## Decisions
-- One YouTube player (`.yt-host`) lives at body level, 200x200 (API minimum), under the opaque `.app` while guessing; at reveal it is positioned over `.video-slot` with a rAF loop (moving an iframe reloads it).
+- Two YouTube players (`.yt-host`, youtube-nocookie host for fewer ads) live at body level, 200x200 (API minimum), under the opaque `.app`. The active one plays clips and is positioned over `.video-slot` at reveal (rAF loop; moving an iframe reloads it); the standby one preloads the next song, and `prepare` swaps roles when it already holds the requested song. iOS uses one player (each iframe needs a tap).
+- Covers: tiles use YouTube `hqdefault` (zoomed 1.34x to hide the letterbox), reveal swaps in the stored full-size thumbnail; the service worker caches `i.ytimg.com` cache-first.
+- UI: themes are CSS token sets on `[data-theme]`; UI sounds are synthesized in `src/ui/sfx.ts`; the clip timeline is a WAAPI clip-path/transform animation started from the engine's `onStart` time.
 - YouTube prepare: reset the cached state, `loadVideoById` muted (nudged with playVideo every 1.5 s while not playing/buffering), wait until state PLAYING, the video id matches and currentTime passes start (pre-roll ads play out muted), then pause and seek. Clip: seek only if the player is not already parked at start (a seek forces a rebuffer), unMute, play, start timing on PLAYING with performance.now, mute and pause after the duration, then park at start again.
 - Local: decodeAudioData; start = first 10 ms RMS window that stays above -45 dBFS for 30 ms, minus 20 ms pre-roll, capped at 8 s (threshold and pre-roll are dev settings). Clips use AudioBufferSourceNode with 2 ms gain ramps.
 - Import: playlists.list (name, existence), playlistItems.list (contentDetails, 50/page), videos.list (snippet,status, 50 ids) drops private, non-embeddable, unprocessed and deleted videos. Re-import keeps edits and best score.

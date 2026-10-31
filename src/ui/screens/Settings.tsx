@@ -1,9 +1,10 @@
 import { useState } from 'preact/hooks';
-import { tryUnlockDev, updateSettings } from '../../data/settings';
+import { THEMES, tryUnlockDev, updateSettings } from '../../data/settings';
 import { Sheet } from '../components';
 import { useSettings, useStore } from '../hooks';
-import { IconDownload, IconLock, IconShare, IconPlus } from '../icons';
+import { IconCheck, IconDownload, IconHeart, IconLock, IconPalette, IconPlus, IconShare, IconVolume, IconVolumeOff } from '../icons';
 import { installKind, isStandalone, promptInstall, subscribeInstall } from '../pwa';
+import { sfx } from '../sfx';
 
 export function InstallSheet({ onClose }: { onClose: () => void }) {
   return (
@@ -33,8 +34,40 @@ export function Settings({ onIosInstall }: { onIosInstall: () => void }) {
   };
 
   return (
-    <div class="stack">
-      <h1 class="display display-sm">Cài đặt</h1>
+    <div class="stack settings">
+      <h1 class="title-lg">Cài đặt</h1>
+
+      <section class="card stack-sm">
+        <h2 class="section-title"><span class="section-icon"><IconPalette size={20} /></span> Màu giao diện</h2>
+        <div class="themes" role="radiogroup" aria-label="Màu giao diện">
+          {THEMES.map((t) => (
+            <button key={t.id} role="radio" aria-checked={s.theme === t.id} class={'theme' + (s.theme === t.id ? ' on' : '')}
+              onClick={() => updateSettings({ theme: t.id })}>
+              <span class="theme-swatch" style={{ background: t.bg }}>
+                <i style={{ background: t.surface }} />
+                <i style={{ background: t.accent }} />
+                <i style={{ background: t.good }} />
+                {s.theme === t.id && <span class="theme-check" style={{ color: t.accent }}><IconCheck size={16} /></span>}
+              </span>
+              <span class="theme-name">{t.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section class="card stack-sm">
+        <h2 class="section-title"><span class="section-icon">{s.sfx ? <IconVolume size={20} /> : <IconVolumeOff size={20} />}</span> Âm thanh giao diện</h2>
+        <label class="switch-row">
+          <span class="grow">Tiếng bấm, đúng/sai, đếm ngược</span>
+          <input type="checkbox" class="switch" checked={s.sfx}
+            onChange={(e) => (updateSettings({ sfx: e.currentTarget.checked }), sfx.toggle(e.currentTarget.checked))} />
+        </label>
+        <label class="field">
+          <span class="row"><span class="grow">Âm lượng</span><span class="num muted">{Math.round(s.sfxVolume * 100)}%</span></span>
+          <input type="range" min={0} max={1} step={0.05} value={s.sfxVolume} disabled={!s.sfx}
+            onInput={(e) => updateSettings({ sfxVolume: Number(e.currentTarget.value) })} onChange={() => sfx.correct()} />
+        </label>
+      </section>
 
       <section class="card stack-sm">
         <h2 class="section-title">Ứng dụng</h2>
@@ -67,6 +100,8 @@ export function Settings({ onIosInstall }: { onIosInstall: () => void }) {
         )}
         {msg && <p class="error-text">{msg}</p>}
       </section>
+
+      <p class="credit"><IconHeart size={14} /> by Harie Dawn :3</p>
     </div>
   );
 }

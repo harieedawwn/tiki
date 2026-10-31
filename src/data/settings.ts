@@ -1,6 +1,35 @@
 import { DEV_CODE_SHA256 } from '../config';
 import { DEFAULT_PRESETS } from '../core/stages';
-import type { Preset, PresetId } from '../core/types';
+import type { GameKind, Preset, PresetId } from '../core/types';
+
+export type ThemeId = 'night' | 'ocean' | 'grape' | 'rose' | 'ink' | 'paper';
+
+export interface ThemeInfo {
+  id: ThemeId;
+  name: string;
+  bg: string;
+  surface: string;
+  accent: string;
+  good: string;
+}
+
+/** Swatches for the picker and the browser theme-color; the full token sets live in styles.css. */
+export const THEMES: ThemeInfo[] = [
+  { id: 'night', name: 'Đêm', bg: '#0e1024', surface: '#191c3b', accent: '#7b6dff', good: '#38d39f' },
+  { id: 'ocean', name: 'Biển sâu', bg: '#06182a', surface: '#0e2741', accent: '#3fa9ff', good: '#3be0b0' },
+  { id: 'grape', name: 'Nho', bg: '#170f2c', surface: '#22183f', accent: '#b28dff', good: '#4fd8a5' },
+  { id: 'rose', name: 'Hồng đêm', bg: '#1d0f1c', surface: '#2a1628', accent: '#ff7aa8', good: '#5fd6a4' },
+  { id: 'ink', name: 'Mực', bg: '#101113', surface: '#1b1c20', accent: '#e9e7ff', good: '#5ad6a0' },
+  { id: 'paper', name: 'Sáng', bg: '#f2f3fa', surface: '#ffffff', accent: '#5446e8', good: '#0f9d74' },
+];
+
+export interface LastGame {
+  kind: GameKind;
+  count: number | 'all';
+  preset: PresetId;
+  coverChoices: number;
+  soundChoices: number;
+}
 
 export interface Settings {
   devUnlocked: boolean;
@@ -10,6 +39,13 @@ export interface Settings {
   silenceThresholdDb: number;
   /** Kept before the detected start so the first attack survives, ms. */
   prerollMs: number;
+  theme: ThemeId;
+  /** UI sound effects. */
+  sfx: boolean;
+  sfxVolume: number;
+  /** Multiplayer: keep hearing the clips after you guessed right (spectating). */
+  listenSpectating: boolean;
+  lastGame: LastGame;
 }
 
 const KEY = 'tiki.settings';
@@ -19,7 +55,19 @@ const DEFAULTS: Settings = {
   presets: DEFAULT_PRESETS,
   silenceThresholdDb: -45,
   prerollMs: 20,
+  theme: 'night',
+  sfx: true,
+  sfxVolume: 0.7,
+  listenSpectating: true,
+  lastGame: { kind: 'classic', count: 10, preset: 'tichtac', coverChoices: 20, soundChoices: 6 },
 };
+
+/** Applies the theme tokens and the browser chrome color. */
+export function applyTheme(id: ThemeId): void {
+  const t = THEMES.find((x) => x.id === id) ?? THEMES[0];
+  document.documentElement.dataset.theme = t.id;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', t.bg));
+}
 
 function load(): Settings {
   try {
