@@ -12,7 +12,7 @@ Mobile-first song-guessing PWA. Hear 0.5-12 s from the start of a song and name 
 
 ## Game kinds (src/core/modes.ts)
 - classic: opening clip, guess by name (search). random: same, from a random start (`startFrac` resolved against the song length with `startFromFrac`). cover: classic clip, guess by picking one of N covers (12/20/40). sound: the cover is shown, N numbered 4 s clips from 30% into each song (4/6/10/20), 3 attempts (1000/500/250).
-- Multiplayer: `meta/opts` = { kind, choices, flow: auto|manual, revealSec }. The host writes `round.kind`, `round.startFrac`, `round.options` (song indexes), and for sound `round.optionVideos` + `round.cover` (the question; answer stays out of `round`). Sound kind is YouTube-only and has one 25 s window; clients play clips on their own.
+- Multiplayer: `meta/opts` = { kind, choices, flow: auto|manual, revealSec }. The host writes `round.kind`, `round.startFrac`, `round.options` (song indexes), and for sound `round.optionVideos` + `round.cover` (the question; answer stays out of `round`). Sound kind is YouTube-only and has one 25 s window; clients play clips on their own. Before a sound round each device loads every option in its own muted player (`preloadSet`: 4 players on touch devices, 6 otherwise, extra options load on tap) and shows 'Đang tải các đoạn x/y'; it reports ready after that (15 s cap).
 - Spectating: after a correct guess (or when eliminated) a player only watches; they may mute the shared clips (`settings.listenSpectating`), the timeline keeps running.
 
 ## Vote skip and stickers (rooms)

@@ -51,6 +51,7 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
   const [clip, setClip] = useState<ClipRun | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [needTap, setNeedTap] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<[number, number] | null>(null);
   const card = useRef<HTMLDivElement>(null);
   // Sound pick state
   const [soundSel, setSoundSel] = useState<number | null>(null);
@@ -82,11 +83,20 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
     (async () => {
       try {
         if (g.kind === 'sound') {
-          // Nothing to load up front: each numbered clip loads when tapped.
+          // Load the numbered clips up front (one muted player each), so every tap plays at once.
           prefetchCovers([song.cover]);
+          const opts = g.options.map((id) => songs.get(id)!).filter(Boolean);
+          const yt = opts.filter((s) => s.source.type === 'youtube');
+          opts.filter((s) => s.source.type === 'local').slice(0, 4).forEach((s) => localEngine.preload(s));
+          if (yt.length) {
+            await Promise.race([
+              youtubeEngine().preloadSet(yt, playlist, previewOpts, (d, t) => !cancelled && setLoadProgress([d, t])),
+              new Promise((r) => setTimeout(r, 15000)),
+            ]);
+          }
+          if (cancelled) return;
+          setLoadProgress(null);
           setG(markReady);
-          const first = songs.get(g.options[0]);
-          if (first) engineFor(first).preload(first, playlist, previewOpts);
           return;
         }
         const yt = youtubeEngine();
@@ -232,7 +242,12 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
             <div class="sound-cover"><Cover song={song} q="lg" anonymous /></div>
             <p class="hint center">Ảnh bìa này là của bài nào? Nghe từng số rồi chốt.</p>
           </div>
-          <p class="status" role="status">{g.phase === 'preparing' ? 'Đang chuẩn bị...' : note ?? ' '}</p>
+          <p class="status" role="status">
+            {g.phase === 'preparing'
+              ? <span class="load-line"><span class="loading-dots">{loadProgress ? `Đang tải các đoạn ${loadProgress[0]}/${loadProgress[1]}` : 'Đang chuẩn bị'}</span>
+                {loadProgress && <span class="progress"><i style={{ width: (loadProgress[0] / Math.max(1, loadProgress[1])) * 100 + '%' }} /></span>}</span>
+              : note ?? ' '}
+          </p>
           <SoundPicker options={options} sel={soundSel} playing={soundPlaying} loading={soundLoading} wrong={g.wrongGuesses}
             disabled={g.phase !== 'ready'} clipMs={SOUND_PREVIEW_SEC * 1000} playKey={clip?.key ?? 0}
             onPick={(i) => void preview(i)} onSubmit={() => soundSel !== null && onGuess(g.options[soundSel])} />

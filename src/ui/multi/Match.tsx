@@ -273,7 +273,9 @@ function LoadingCard({ code, room, round, state, perms, manual }: {
     <div class="card loading-card">
       <div class="loading-eq" aria-hidden="true"><i /><i /><i /><i /><i /></div>
       <p class="status">
-        {state.needTap ? 'Chạm vào video để bật âm thanh' : state.audioError ?? (state.audioReady || round.kind === 'sound' ? 'Máy bạn đã sẵn sàng' : <span class="loading-dots">Đang tải bài</span>)}
+        {state.needTap ? 'Chạm vào video để bật âm thanh' : state.audioError ?? (state.loadProgress
+          ? <span class="loading-dots">Đang tải các đoạn {state.loadProgress[0]}/{state.loadProgress[1]}</span>
+          : state.audioReady ? 'Máy bạn đã sẵn sàng' : <span class="loading-dots">Đang tải bài</span>)}
       </p>
       <p class="hint num center">{ready}/{active.length} người sẵn sàng</p>
       {manual && (perms.isHost ? (

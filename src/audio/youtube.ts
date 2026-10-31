@@ -49,6 +49,10 @@ class Slot {
   private latency = 120;
   /** What this slot holds (or is loading): key and the prepare promise. */
   load: { key: string; done: Promise<PrepareResult> } | null = null;
+  /** A load is in flight (muted); switching away must not cancel it. */
+  loading = false;
+  /** Last time this slot was asked for (least recently used is reused first). */
+  used = 0;
 
   constructor(private onAutoplayBlocked: () => void) {
     this.host = document.createElement('div');
@@ -139,6 +143,11 @@ class Slot {
   start(key: string, videoId: string, startMs: number, opts: PrepareOptions): Promise<PrepareResult> {
     const done = this.loadVideo(videoId, startMs, opts);
     this.load = { key, done };
+    this.used = performance.now();
+    this.loading = true;
+    done.finally(() => {
+      if (this.load?.done === done) this.loading = false;
+    }).catch(() => {});
     done.catch(() => {
       if (this.load?.done === done) this.load = null;
     });
@@ -250,8 +259,15 @@ class YouTubeEngine implements AudioEngine {
     return (this.slots[i] ??= new Slot(() => (this.autoplayBlocked = true)));
   }
 
+  /** Players for normal play: active + one standby (iOS: one, each iframe needs its own tap). */
   private get pool(): number {
     return isIOS() ? 1 : 2;
+  }
+
+  /** Players allowed when preloading a whole set of clips (sound pick): fewer on phones (memory). */
+  get setPool(): number {
+    if (isIOS()) return 1;
+    return matchMedia('(pointer: coarse)').matches ? 4 : 6;
   }
 
   /** The active player's element (positioned over the video slot at reveal). */
@@ -280,44 +296,93 @@ class YouTubeEngine implements AudioEngine {
     return { videoId, startMs, key: `${videoId}|${opts.startFrac ?? 'o' + startMs}|${opts.clipSec ?? ''}` };
   }
 
+  private find(key: string): number {
+    return this.slots.findIndex((s) => s?.load?.key === key);
+  }
+
   prepare(song: Song, playlist: Pick<Playlist, 'defaultOffsetMs'>, opts: PrepareOptions = {}): Promise<PrepareResult> {
     const { videoId, startMs, key } = this.target(song, playlist, opts);
     const a = this.slot(this.cur);
-    if (a.load?.key === key) return a.load.done;
-    const bi = 1 - this.cur;
-    const b = this.pool > 1 ? this.slots[bi] : undefined;
-    if (b?.load?.key === key) {
-      // The standby player already has it: swap roles.
-      a.stop();
+    const i = this.find(key);
+    if (i === this.cur) {
+      a.used = performance.now();
+      return a.load!.done;
+    }
+    if (i >= 0) {
+      // Another player already has it: make that one active. A muted load in the old one keeps going.
+      if (!a.loading) a.stop();
       a.setMode('hidden');
-      this.cur = bi;
-      return b.load.done;
+      this.cur = i;
+      this.slots[i].used = performance.now();
+      return this.slots[i].load!.done;
     }
     return a.start(key, videoId, startMs, opts);
+  }
+
+  /** A free player for background loading: never the active one; unused first, then least recently used. */
+  private spare(limit: number, keep: Set<string>): Slot | null {
+    let best = -1;
+    for (let i = 0; i < limit; i++) {
+      if (i === this.cur) continue;
+      const s = this.slots[i];
+      if (!s?.load) return this.slot(i);
+      if (keep.has(s.load.key)) continue;
+      if (best < 0 || s.used < this.slots[best].used) best = i;
+    }
+    return best >= 0 ? this.slots[best] : null;
   }
 
   preload(song: Song, playlist: Pick<Playlist, 'defaultOffsetMs'>, opts: PrepareOptions = {}): void {
     if (this.pool < 2 || song.source.type !== 'youtube') return;
     const { videoId, startMs, key } = this.target(song, playlist, opts);
-    if (this.slot(this.cur).load?.key === key) return;
-    const b = this.slot(1 - this.cur);
-    if (b.load?.key === key) return;
-    b.start(key, videoId, startMs, opts).catch(() => {});
+    if (this.find(key) >= 0) return;
+    this.spare(Math.max(this.pool, this.slots.length), new Set())?.start(key, videoId, startMs, opts).catch(() => {});
+  }
+
+  /**
+   * Loads several songs at once, one muted player each (up to `setPool`), for instant previews.
+   * Resolves when all of them settle; `onProgress(done, total)` reports each one.
+   */
+  preloadSet(songs: Song[], playlist: Pick<Playlist, 'defaultOffsetMs'>, opts: PrepareOptions, onProgress?: (done: number, total: number) => void): Promise<void> {
+    const limit = this.setPool;
+    const list = songs.filter((s) => s.source.type === 'youtube').slice(0, limit).map((s) => ({ s, ...this.target(s, playlist, opts) }));
+    const keep = new Set(list.map((x) => x.key));
+    const jobs: Promise<unknown>[] = [];
+    // The active player may take one too when it is idle and holds nothing we want.
+    const c = this.slot(this.cur);
+    let curFree = !c.loading && (!c.load || !keep.has(c.load.key));
+    for (const x of list) {
+      const i = this.find(x.key);
+      if (i >= 0) {
+        jobs.push(this.slots[i].load!.done);
+        continue;
+      }
+      const slot = curFree ? c : this.spare(limit, keep);
+      curFree = false;
+      if (!slot) break;
+      jobs.push(slot.start(x.key, x.videoId, x.startMs, opts));
+    }
+    let done = 0;
+    onProgress?.(0, jobs.length);
+    return Promise.all(jobs.map((j) => j.catch(() => {}).then(() => onProgress?.(++done, jobs.length)))).then(() => {});
   }
 
   playClip(durationMs: number, at?: number, onStart?: OnClipStart): Promise<ClipResult> {
-    return this.slot(this.cur).playClip(durationMs, at, onStart);
+    const s = this.slot(this.cur);
+    s.used = performance.now();
+    return s.playClip(durationMs, at, onStart);
   }
 
   stop(): void {
     this.slots[this.cur]?.stop();
   }
 
-  /** Stops both players, including a background load (leaving a game or room). */
+  /** Stops every player, including background loads (leaving a game or room). */
   stopAll(): void {
     this.slots.forEach((s) => {
       s.stop();
       s.load = null;
+      s.loading = false;
     });
   }
 }

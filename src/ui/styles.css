@@ -736,3 +736,5 @@ input[type='range'] { accent-color: var(--accent); min-height: 44px; width: 100%
 }
 .crop-view img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; }
 .crop-frame { position: absolute; inset: 0; border: 3px solid var(--accent); border-radius: 18px; pointer-events: none; }
+.load-line { display: inline-flex; flex-direction: column; align-items: center; gap: 8px; width: min(100%, 240px); }
+.load-line .progress { width: 100%; }

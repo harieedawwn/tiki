@@ -26,12 +26,14 @@ export interface SessionState {
   clip: { start: number; ms: number; key: number } | null;
   /** Sound kind: the numbered clip loading or playing on this device. */
   preview: { i: number; loading: boolean } | null;
+  /** Sound kind: numbered clips loaded / total while the round loads. */
+  loadProgress: [number, number] | null;
 }
 
 /** One joined room on this device: subscription, presence, host failover, audio sync. */
 export class RoomSession {
   readonly pid = playerId();
-  state: SessionState = { room: null, loaded: false, connected: true, kicked: false, audioReady: false, audioError: null, needTap: false, clip: null, preview: null };
+  state: SessionState = { room: null, loaded: false, connected: true, kicked: false, audioReady: false, audioError: null, needTap: false, clip: null, preview: null, loadProgress: null };
   private listeners = new Set<() => void>();
   private unsubs: (() => void)[] = [];
   private host: HostController | null = null;
@@ -165,9 +167,15 @@ export class RoomSession {
   private async prepare(round: RoundState, key: string): Promise<void> {
     try {
       if (round.kind === 'sound') {
-        // Numbered clips load on tap; warm the first one.
-        const v = round.optionVideos?.[0];
-        if (v) youtubeEngine().preload(ytSong(v, 0), { defaultOffsetMs: 0 }, { startFrac: SOUND_PREVIEW_FRAC, clipSec: SOUND_PREVIEW_SEC });
+        // Load the numbered clips before saying ready, so taps play at once (the host waits for everyone).
+        const songs = (round.optionVideos ?? []).filter(Boolean).map((v) => ytSong(v, 0));
+        this.set({ loadProgress: [0, songs.length] });
+        await Promise.race([
+          youtubeEngine().preloadSet(songs, { defaultOffsetMs: 0 }, { startFrac: SOUND_PREVIEW_FRAC, clipSec: SOUND_PREVIEW_SEC },
+            (d, t) => key === this.preparedKey && this.set({ loadProgress: [d, t] })),
+          new Promise((r) => setTimeout(r, 15000)),
+        ]);
+        this.set({ loadProgress: null });
       } else if (round.videoId) {
         const yt = youtubeEngine();
         if (yt.needsTapUnlock()) {

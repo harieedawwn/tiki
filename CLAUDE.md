@@ -18,7 +18,7 @@ Vite + TypeScript + Preact + vite-plugin-pwa. Read SPEC.md for architecture and 
 - UI sounds go through `sfx` (`src/ui/sfx.ts`, synthesized, quiet); buttons get a tap sound automatically, opt out with `data-sfx="none"` (e.g. buttons that start a clip).
 
 ## Gotchas
-- YouTube uses two players (`youtubeEngine()`): the active one plays and is shown at reveal, the standby one preloads the next song (ads play out muted there). iOS keeps one. Never move an iframe in the DOM (that reloads it); use `usePlayerSlot`, which positions the active one.
+- YouTube uses two players (`youtubeEngine()`): the active one plays and is shown at reveal, the standby one preloads the next song (ads play out muted there). Sound pick preloads all options at once (`preloadSet`, up to 4 players on phones, 6 on desktop). iOS keeps one. Never move an iframe in the DOM (that reloads it); use `usePlayerSlot`, which positions the active one.
 - Navigation: `go()` in `App.tsx` pushes a history entry per screen (going to a screen already below pops back to it); sheets use `useBackClose` (`src/ui/nav.ts`) so Back closes them first. Don't call `history.replaceState(null, ...)` elsewhere.
 - Players must stay at least 200x200 and inside the viewport (under the opaque `.app`), not display:none.
 - The dev code is stored only as a SHA-256 hash in `src/config.ts`. Never commit the plaintext.
