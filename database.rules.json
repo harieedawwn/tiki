@@ -1,0 +1,92 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      ".read": true,
+      ".indexOn": ["meta/hostId"],
+      "$code": {
+        ".write": "$code.matches(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/)",
+        "meta": {
+          ".validate": "newData.hasChildren(['hostId', 'status', 'createdAt', 'settings'])",
+          "hostId": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "status": { ".validate": "newData.isString() && newData.val().matches(/^(lobby|playing|paused|ended)$/)" },
+          "locked": { ".validate": "newData.isBoolean()" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "pausedAt": { ".validate": "newData.isNumber()" },
+          "mods": { "$pid": { ".validate": "newData.val() === true && $pid.length <= 40" } },
+          "kicked": { "$pid": { ".validate": "newData.val() === true && $pid.length <= 40" } },
+          "winners": { "$i": { ".validate": "newData.isString() && newData.val().length <= 40" } },
+          "suddenDeath": { "$i": { ".validate": "newData.isString() && newData.val().length <= 40" } },
+          "settings": {
+            ".validate": "newData.hasChildren(['rounds', 'mode', 'presetId', 'intervalSec', 'cooldownSec', 'speedBonus'])",
+            "rounds": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 50" },
+            "mode": { ".validate": "newData.isString() && newData.val().matches(/^(classic|race|elim)$/)" },
+            "target": { ".validate": "newData.isNumber() && newData.val() >= 500 && newData.val() <= 20000" },
+            "elimEvery": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 10" },
+            "presetId": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "intervalSec": { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 20" },
+            "cooldownSec": { ".validate": "newData.isNumber() && (newData.val() === 0 || newData.val() === 2 || newData.val() === 5)" },
+            "speedBonus": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "players": {
+          "$pid": {
+            ".validate": "$pid.length <= 40 && newData.hasChildren(['name', 'score', 'joinedAt'])",
+            "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 24" },
+            "score": { ".validate": "newData.isNumber() && newData.val() >= -1000000 && newData.val() <= 10000000" },
+            "connected": { ".validate": "newData.isBoolean()" },
+            "joinedAt": { ".validate": "newData.isNumber()" },
+            "eliminated": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "playlist": {
+          "name": { ".validate": "newData.isString() && newData.val().length <= 200" },
+          "songs": {
+            "$i": {
+              "title": { ".validate": "newData.isString() && newData.val().length <= 300" },
+              "artist": { ".validate": "newData.isString() && newData.val().length <= 300" },
+              "cover": { ".validate": "newData.isString() && newData.val().length <= 11000" }
+            }
+          }
+        },
+        "round": {
+          "index": { ".validate": "newData.isNumber()" },
+          "stage": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 9" },
+          "stageStartAt": { ".validate": "newData.isNumber()" },
+          "clips": { "$i": { ".validate": "newData.isString() && newData.val().length <= 1200000" } },
+          "ready": { "$pid": { ".validate": "newData.isNumber()" } },
+          "results": { "$pid": { "points": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 2000" } } }
+        },
+        "guesses": {
+          "$round": {
+            "$gid": {
+              ".validate": "newData.hasChildren(['pid', 'songId', 'at'])",
+              "pid": { ".validate": "newData.isString() && newData.val().length <= 40" },
+              "songId": { ".validate": "newData.isString() && newData.val().length <= 300" },
+              "at": { ".validate": "newData.isNumber() && newData.val() <= now" },
+              "$other": { ".validate": false }
+            }
+          }
+        },
+        "commands": {
+          "$cid": {
+            "type": { ".validate": "newData.isString() && newData.val().matches(/^(skip|pause|resume|end)$/)" },
+            "by": { ".validate": "newData.isString() && newData.val().length <= 40" }
+          }
+        }
+      }
+    },
+    "featured": {
+      ".read": true,
+      "$id": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['id', 'name', 'kind', 'songs'])",
+        "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 200" },
+        "kind": { ".validate": "newData.isString() && newData.val().matches(/^(youtube|local)$/)" }
+      }
+    }
+  }
+}
