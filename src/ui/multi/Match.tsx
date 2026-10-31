@@ -6,7 +6,7 @@ import { formatSeconds } from '../../core/stages';
 import type { Song } from '../../core/types';
 import { updateSettings } from '../../data/settings';
 import { serverNow } from '../../multi/firebase';
-import { becomeHost, sendCommand, setLocked, startRoundNow, submitGuess } from '../../multi/room';
+import { becomeHost, sendCommand, setLocked, startRoundNow, submitGuess, voteSkip } from '../../multi/room';
 import type { RoomSession, SessionState } from '../../multi/session';
 import type { Room, RoundState } from '../../multi/types';
 import { Burst, ClipBar, CountUp, CountdownOverlay, Cover, StageIndicator, shake } from '../components';
@@ -203,6 +203,8 @@ export function Match({ code, room, session, state, perms }: {
         </div>
       )}
 
+      {round.phase === 'playing' && !spectating && !paused && <SkipVote key={`${round.index}:${round.stage}`} code={code} room={room} round={round} pid={perms.pid} />}
+
       <section class="stack-xs">
         <h3 class="kicker">Bảng xếp hạng</h3>
         <RankList rows={top} me={perms.pid} ellipsis />
@@ -220,6 +222,27 @@ export function Match({ code, room, session, state, perms }: {
       {round.phase === 'playing' && !paused && !sheet && <Countdown round={round} />}
       {state.needTap && <div class="unlock-label">Chạm để bật âm thanh</div>}
     </div>
+  );
+}
+
+/** Vote to skip the current stage; when everyone still guessing votes, the host moves on. */
+function SkipVote({ code, room, round, pid }: { code: string; room: Room; round: RoundState; pid: string }) {
+  const sd = round.suddenDeath ? new Set(room.meta.suddenDeath ?? []) : null;
+  const voters = Object.entries(room.players ?? {})
+    .filter(([id, p]) => p.connected && !p.eliminated && (!sd || sd.has(id)) && !round.results?.[id]);
+  const votes = voters.filter(([id]) => round.skipVotes?.[id] === round.stage).length;
+  const mine = round.skipVotes?.[pid] === round.stage;
+  const last = round.stage >= round.stages.length - 1;
+  const total = Math.max(1, voters.length);
+  return (
+    <button class={'skip-vote' + (mine ? ' voted' : '')} disabled={mine} data-sfx="none"
+      onClick={() => (sfx.step(), void voteSkip(code, round.stage).catch(() => {}))}>
+      <span class="skip-fill" style={{ transform: `scaleX(${votes / total})` }} />
+      <span class="skip-ico"><IconSkip size={18} /></span>
+      <span class="grow skip-label">{mine ? 'Đã bỏ phiếu, chờ mọi người' : last ? 'Bỏ phiếu bỏ qua bài này' : 'Bỏ phiếu nghe đoạn dài hơn'}</span>
+      <span class="skip-dots" aria-hidden="true">{voters.map(([id], i) => <i key={id} class={i < votes ? 'on' : ''} />)}</span>
+      <span class="num skip-count">{votes}/{voters.length}</span>
+    </button>
   );
 }
 

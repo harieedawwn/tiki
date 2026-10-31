@@ -85,6 +85,13 @@ export const IconTrophy = (p: P) => (
 export const IconTimer = (p: P) => <Svg {...p}><circle cx="12" cy="13" r="8" /><path d="M12 13V9M9.5 2.5h5" /></Svg>;
 export const IconHeart = (p: P) => <Svg {...p}><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 3c0 5.4-7.5 10-7.5 10z" /></Svg>;
 
+/** Sticker: a square with a peeled corner and a smile. */
+export const IconSticker = (p: P) => (
+  <Svg {...p}><path d="M20 13V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7z" /><path d="M13 20c0-3.9 3.1-7 7-7" /><circle cx="9" cy="10" r="1.1" fill="currentColor" stroke="none" /><circle cx="15" cy="10" r="1.1" fill="currentColor" stroke="none" /><path d="M8.5 14.5c1 1 2.2 1.5 3.5 1.5" /></Svg>
+);
+export const IconImage = (p: P) => <Svg {...p}><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><circle cx="9" cy="10" r="1.6" /><path d="M4 17l5-5 4 4 2.5-2.5L20 18" /></Svg>;
+export const IconTrash = (p: P) => <Svg {...p}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></Svg>;
+
 /** App mark: a game-show buzzer with a music note (same art as public/icons/icon.svg). */
 export function Logo({ size = 32 }: { size?: number }) {
   return (

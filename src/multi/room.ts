@@ -150,6 +150,19 @@ export async function submitGuess(code: string, roundIndex: number, songId: stri
 /** Ready flag holds the round index, so a late write never counts for a newer round. */
 export const markReady = (code: string, roundIndex: number) => set(rref(code, `round/ready/${playerId()}`), roundIndex);
 
+export const voteSkip = (code: string, stage: number) => set(rref(code, `round/skipVotes/${playerId()}`), stage);
+
+export const sendEmote = (code: string, k: string) => push(rref(code, 'emotes'), { pid: playerId(), k, at: serverTimestamp() });
+
+const uploaded = new Set<string>();
+/** Puts a custom sticker image in the room once, so others can show it. */
+export async function ensureSticker(code: string, id: string, data: string): Promise<void> {
+  const key = `${code}/${id}`;
+  if (uploaded.has(key)) return;
+  await set(rref(code, `stickers/${playerId()}/${id}`), data);
+  uploaded.add(key);
+}
+
 export const sendCommand = (code: string, type: CommandType) => push(rref(code, 'commands'), { type, by: playerId() });
 
 // Moderation (host/mods; dev for the extra ones). Permissions are enforced client-side only.

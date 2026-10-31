@@ -6,6 +6,7 @@ import type { Route } from '../App';
 import { ErrorBox } from '../components';
 import { useSettings, useStore } from '../hooks';
 import { IconBack, IconShare, IconWifiOff } from '../icons';
+import { EmoteDock, EmoteLayer } from './Emotes';
 import { End } from './End';
 import { Lobby } from './Lobby';
 import { Match, ModBar } from './Match';
@@ -150,6 +151,8 @@ function InRoom({ code, session, onExit }: { code: string; session: RoomSession;
         <Match code={code} room={room} session={session} state={st} perms={perms} />
       )}
       {room.meta.status === 'ended' && <End code={code} room={room} perms={perms} />}
+      <EmoteLayer room={room} />
+      <EmoteDock code={code} />
     </div>
   );
 }

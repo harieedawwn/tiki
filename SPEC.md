@@ -15,6 +15,10 @@ Mobile-first song-guessing PWA. Hear 0.5-12 s from the start of a song and name 
 - Multiplayer: `meta/opts` = { kind, choices, flow: auto|manual, revealSec }. The host writes `round.kind`, `round.startFrac`, `round.options` (song indexes), and for sound `round.optionVideos` + `round.cover` (the question; answer stays out of `round`). Sound kind is YouTube-only and has one 25 s window; clients play clips on their own.
 - Spectating: after a correct guess (or when eliminated) a player only watches; they may mute the shared clips (`settings.listenSpectating`), the timeline keeps running.
 
+## Vote skip and stickers (rooms)
+- `round/skipVotes/{pid}` = stage index. When every connected active player without a result has voted for the current stage (after it started), the host moves to the next stage, or reveals on the last one.
+- Stickers: presets are SVG art in `src/ui/stickers.tsx`; custom ones are cropped 1:1 to 160 px (WebP, JPEG fallback) and kept in localStorage (max 12). Throwing one pushes `emotes/{key}` = { pid, k, at } (k = preset id or `c:<id>`); a custom image is uploaded once per room to `stickers/{pid}/{id}`. The host prunes emotes older than 10 s; clients show each new one for 2.8 s, 1.2 s cooldown per player.
+
 ## Search (src/core/text.ts)
 Diacritics-insensitive; ranks title prefix, word/artist prefix, substring (also ignoring spaces), then fuzzy (optimal string alignment distance, 1-3 typos by word length, also against word prefixes). `searchArtists` returns matching artists (credits split on , & ft. feat. x ...) shown as chips that filter to their songs.
 

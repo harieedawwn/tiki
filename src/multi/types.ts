@@ -83,6 +83,15 @@ export interface RoundState {
   optionVideos?: string[] | null;
   /** sound: the cover shown as the question. */
   cover?: string | null;
+  /** pid -> stage the player voted to skip; all active players on the current stage = skip it. */
+  skipVotes?: Record<string, number> | null;
+}
+
+/** A thrown sticker: preset id, or "c:<id>" for a custom one in /stickers/{pid}. */
+export interface Emote {
+  pid: string;
+  k: string;
+  at: number;
 }
 
 /** Host-only bookkeeping, kept in the database so a new host can continue. Client-side privacy only. */
@@ -124,6 +133,9 @@ export interface Room {
   history?: Record<string, HistoryEntry> | null;
   guesses?: Record<string, Record<string, Guess>> | null;
   commands?: Record<string, { type: CommandType; by: string }> | null;
+  emotes?: Record<string, Emote> | null;
+  /** pid -> sticker id -> 160 px square image (data URL). */
+  stickers?: Record<string, Record<string, string>> | null;
 }
 
 export interface FeaturedPlaylist {

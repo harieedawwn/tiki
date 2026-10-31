@@ -110,6 +110,8 @@ export const sfx = {
     ]),
   /** Countdown second. */
   tick: () => play([{ f: 1480, dur: 0.06, gain: 0.07, verb: false }, { f: 740, dur: 0.05, gain: 0.03, verb: false }]),
+  /** A sticker lands. */
+  pop: () => play([{ f: 520, to: 880, dur: 0.09, gain: 0.05, type: 'triangle' }, { f: 1320, at: 0.05, dur: 0.06, gain: 0.03 }]),
   reveal: () => play([{ f: N(0), to: N(7), dur: 0.22, gain: 0.05, type: 'triangle', attack: 0.03 }]),
   win: () =>
     play([0, 4, 7, 12, 16].map((s, i) => ({ f: N(s + 3), at: i * 0.08, dur: 0.5 - i * 0.03, gain: 0.06, type: 'triangle' as const }))),

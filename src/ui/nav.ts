@@ -10,23 +10,53 @@ export interface NavState<R> {
   sheet?: boolean;
 }
 
-export const navState = <R>() => history.state as NavState<R> | null;
+// Open sheets share one history entry. It is added when the first opens and removed when the last
+// closes, debounced so one sheet replacing another (tray -> crop) keeps it.
+const open: { close: () => void }[] = [];
+let hasEntry = false;
+let traversing = false;
+let timer = 0;
+
+function sync(): void {
+  clearTimeout(timer);
+  timer = window.setTimeout(() => {
+    if (traversing) return;
+    if (open.length && !hasEntry) {
+      history.pushState({ ...(history.state ?? {}), sheet: true }, '');
+      hasEntry = true;
+    } else if (!open.length && hasEntry) {
+      hasEntry = false;
+      traversing = true;
+      history.back();
+    }
+  }, 150);
+}
+
+window.addEventListener('popstate', () => {
+  if (traversing) {
+    traversing = false;
+    sync();
+    return;
+  }
+  if (!hasEntry) return;
+  // Back pressed with a sheet open: close the top one.
+  hasEntry = false;
+  open[open.length - 1]?.close();
+  sync();
+});
 
 /** Closes a sheet/dialog on Back; closing it in the UI removes its history entry again. */
 export function useBackClose(onClose: () => void): void {
   const ref = useRef(onClose);
   ref.current = onClose;
   useEffect(() => {
-    history.pushState({ ...(history.state ?? {}), sheet: true }, '');
-    let popped = false;
-    const onPop = () => {
-      popped = true;
-      ref.current();
-    };
-    window.addEventListener('popstate', onPop);
+    const entry = { close: () => ref.current() };
+    open.push(entry);
+    sync();
     return () => {
-      window.removeEventListener('popstate', onPop);
-      if (!popped && (history.state as NavState<unknown> | null)?.sheet) history.back();
+      const i = open.indexOf(entry);
+      if (i >= 0) open.splice(i, 1);
+      sync();
     };
   }, []);
 }

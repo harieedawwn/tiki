@@ -24,6 +24,7 @@ export class HostController {
   private timer = 0;
   private busy = false;
   private handledCmds = new Set<string>();
+  private lastPrune = 0;
 
   constructor(private code: string, private pid: string) {}
 
@@ -76,6 +77,7 @@ export class HostController {
 
   private async step(r: Room): Promise<void> {
     if (await this.commands(r)) return;
+    if (await this.pruneEmotes(r)) return;
     if (r.meta.status !== 'playing') return;
     const round = r.round;
     if (!round) return this.startRound(r, 0, null);
@@ -100,13 +102,27 @@ export class HostController {
       const done = round.suddenDeath
         ? Object.keys(results).length > 0
         : activeOnline.length > 0 && activeOnline.every((p) => results[p.id]);
-      const stageOver = now >= round.stageStartAt + stageWindowMs(round.stages[round.stage], s);
+      // Everyone still guessing voted to skip this stage: go straight to the next one (or reveal).
+      const voters = activeOnline.filter((p) => !results[p.id]);
+      const skip = voters.length > 0 && now >= round.stageStartAt && voters.every((p) => round.skipVotes?.[p.id] === round.stage);
+      const stageOver = skip || now >= round.stageStartAt + stageWindowMs(round.stages[round.stage], s);
       if (done || (stageOver && round.stage >= round.stages.length - 1)) return this.reveal(r, round);
       if (stageOver) await this.write({ 'round/stage': round.stage + 1, 'round/stageStartAt': now + LEAD_MS });
       return;
     }
 
     if (round.phase === 'reveal' && opts.flow === 'auto' && now >= (round.revealUntil ?? 0)) await this.advance(r, round);
+  }
+
+  /** Drops thrown stickers older than 10 s (every 5 s at most). */
+  private async pruneEmotes(r: Room): Promise<boolean> {
+    const now = serverNow();
+    if (now - this.lastPrune < 5000 || !r.emotes) return false;
+    this.lastPrune = now;
+    const old = Object.entries(r.emotes).filter(([, e]) => !(e.at > now - 10000));
+    if (!old.length) return false;
+    await this.write(Object.fromEntries(old.map(([k]) => [`emotes/${k}`, null])));
+    return true;
   }
 
   /** Returns true if it wrote something (the next snapshot continues). */
