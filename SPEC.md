@@ -40,7 +40,7 @@ interface AudioEngine {
 - Host loop is stateless per 200 ms tick: decisions come from the snapshot plus server time (`.info/serverTimeOffset`), so a new host continues mid-round. Clients play at `stageStartAt` (= server now + 3000 ms, shown as a 3-2-1 countdown); a stage lasts clip + `intervalSec`. Guess score = `pointsForStage` (1000/700/450/250/100) + speed bonus up to 200 (linear over the stage window). Ties for first trigger sudden-death songs.
 - Failover: host disconnected more than 5 s, then the earliest-joined connected player claims `meta/hostId` via transaction.
 - Local songs: host cuts each stage as 16-bit mono 22.05 kHz WAV (OfflineAudioContext) into `round.clips`; local covers are re-encoded to 8 KB or less.
-- Without a Firebase config, `npm run dev` uses the Database emulator (`demo-tichtac`, 127.0.0.1:9000).
+- Without a Firebase config, `npm run dev` uses the Database emulator (`demo-tiki`, 127.0.0.1:9000).
 
 ## Verified docs (Oct 2026)
 - IFrame API: states -1/0/1/2/3/5; errors 2, 5, 100, 101, 150, plus 153 (missing Referer / client id; keep the default referrer policy). The viewport must be at least 200x200. `onAutoplayBlocked` exists. `cueVideoById({videoId,startSeconds})` loads nothing until play or seek.

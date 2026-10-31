@@ -7,7 +7,7 @@ Vite + TypeScript + Preact + vite-plugin-pwa. Read SPEC.md for architecture and 
 - `npm run build`: `tsc --noEmit` then `vite build` (must pass with no TS errors)
 - `npm run preview`: serve `dist` (needed to test the service worker)
 - GitHub Pages: `.github/workflows/deploy.yml` builds with `BASE_PATH=/<repo>/` (vite `base`); default base is `/`.
-- Multiplayer in dev without config: `npx firebase-tools@13 emulators:start --only database --project demo-tichtac` (firebase.json pointing at `database.rules.json`, port 9000). Test two players with `localhost` and `p2.localhost` tabs (separate storage gives separate player ids).
+- Multiplayer in dev without config: `npx firebase-tools@13 emulators:start --only database --project demo-tiki` (firebase.json pointing at `database.rules.json`, port 9000). Test two players with `localhost` and `p2.localhost` tabs (separate storage gives separate player ids).
 
 ## Conventions
 - UI text is Vietnamese; code, comments and docs are English.

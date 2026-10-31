@@ -12,7 +12,7 @@ export function database(): Database {
   if (db) return db;
   const emu = useFirebaseEmulator();
   const app = initializeApp(
-    emu ? { projectId: 'demo-tichtac', databaseURL: 'http://127.0.0.1:9000?ns=demo-tichtac' } : FIREBASE_CONFIG,
+    emu ? { projectId: 'demo-tiki', databaseURL: 'http://127.0.0.1:9000?ns=demo-tiki' } : FIREBASE_CONFIG,
   );
   db = getDatabase(app);
   if (emu) connectDatabaseEmulator(db, '127.0.0.1', 9000);
