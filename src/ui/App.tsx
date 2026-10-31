@@ -1,5 +1,6 @@
 import type { FunctionComponent } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import type { NavState } from './nav';
 import { ROOM_CODE_RE, normalizeRoomCode } from '../core/match';
 import type { GameKind, PresetId } from '../core/types';
 import { DebugOverlay } from './dev/DebugOverlay';
@@ -25,6 +26,11 @@ function initialRoute(): Route {
   return ROOM_CODE_RE.test(code) ? { name: 'room', code } : { name: 'home' };
 }
 
+const urlFor = (r: Route) => (r.name === 'room' ? `${location.pathname}?room=${r.code}` : location.pathname);
+const sameScreen = (a: Route, b: Route) =>
+  a.name === b.name && (a as { playlistId?: string }).playlistId === (b as { playlistId?: string }).playlistId &&
+  (a as { code?: string }).code === (b as { code?: string }).code;
+
 type RoomScreenT = FunctionComponent<{ code: string; go: (r: Route) => void }>;
 
 export function App() {
@@ -37,7 +43,38 @@ export function App() {
   const settings = useSettings();
   const install = useStore(subscribeInstall, installKind);
   const [iosSheet, setIosSheet] = useState(false);
+  // Mirror of the app's history entries (index = depth), so going "up" pops instead of pushing.
+  const stack = useRef<Route[]>([route]);
+  const depth = useRef(0);
+  useEffect(() => {
+    history.replaceState({ route, depth: 0 } satisfies NavState<Route>, '', urlFor(route));
+    const onPop = (e: PopStateEvent) => {
+      const st = e.state as NavState<Route> | null;
+      if (!st?.route) return;
+      depth.current = st.depth;
+      stack.current[st.depth] = st.route;
+      setRoute(st.route);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const go = (r: Route) => {
+    // Going to a screen that is already below us (home, the playlist screen) = going back to it.
+    const below = stack.current.slice(0, depth.current).findLastIndex((x) => sameScreen(x, r));
+    if (below >= 0 && r.name !== 'game') {
+      history.go(below - depth.current);
+      return;
+    }
+    if (r.name === 'home' && depth.current === 0) {
+      // Opened straight into a room: home replaces it, so Back from home leaves the app.
+      stack.current = [r];
+      history.replaceState({ route: r, depth: 0 } satisfies NavState<Route>, '', urlFor(r));
+      setRoute(r);
+      return;
+    }
+    depth.current++;
+    stack.current = stack.current.slice(0, depth.current).concat(r);
+    history.pushState({ route: r, depth: depth.current } satisfies NavState<Route>, '', urlFor(r));
     setRoute(r);
     window.scrollTo(0, 0);
   };

@@ -85,15 +85,21 @@ export const IconTrophy = (p: P) => (
 export const IconTimer = (p: P) => <Svg {...p}><circle cx="12" cy="13" r="8" /><path d="M12 13V9M9.5 2.5h5" /></Svg>;
 export const IconHeart = (p: P) => <Svg {...p}><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 3c0 5.4-7.5 10-7.5 10z" /></Svg>;
 
-/** App mark: a disc with a question mark and a short clip arc. */
+/** App mark: a game-show buzzer with a music note (same art as public/icons/icon.svg). */
 export function Logo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" class="logo-mark">
-      <rect width="64" height="64" rx="16" fill="var(--surface-2)" />
-      <circle cx="32" cy="33" r="19" fill="var(--accent)" />
-      <path d="M44.7 13.4A23 23 0 0 1 54.3 25" fill="none" stroke="var(--good)" stroke-width="5" stroke-linecap="round" />
-      <path d="M26.6 28.2a5.6 5.6 0 1 1 8 5c-1.8 1-2.6 2.2-2.6 4.2v.8" fill="none" stroke="var(--on-accent)" stroke-width="4.4" stroke-linecap="round" />
-      <circle cx="32" cy="43.2" r="2.7" fill="var(--on-accent)" />
+    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" class="logo-mark">
+      <rect width="512" height="512" rx="116" fill="#6c5cff" />
+      <g fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round">
+        <path d="M112 214a84 84 0 0 0 0 96M400 214a84 84 0 0 1 0 96" />
+        <path d="M76 184a128 128 0 0 0 0 156M436 184a128 128 0 0 1 0 156" opacity=".55" />
+      </g>
+      <rect x="118" y="376" width="276" height="64" rx="22" fill="#14173a" />
+      <rect x="146" y="344" width="220" height="48" rx="16" fill="#252a5c" />
+      <path d="M152 352a104 104 0 0 1 208 0z" fill="#ff5b73" />
+      <path d="M180 316a80 80 0 0 1 44-52" fill="none" stroke="#ff9aa9" stroke-width="16" stroke-linecap="round" />
+      <g fill="#fff"><circle cx="246" cy="128" r="30" /><rect x="262" y="40" width="16" height="90" rx="8" /><path d="M270 40c34 4 54 22 52 54-10-16-28-22-52-22z" /></g>
+      <rect x="214" y="402" width="84" height="12" rx="6" fill="#38d39f" />
     </svg>
   );
 }

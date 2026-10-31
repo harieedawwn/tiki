@@ -59,7 +59,6 @@ export function RoomScreen({ code, go }: { code: string; go: (r: Route) => void 
   };
 
   useEffect(() => {
-    history.replaceState(null, '', `?room=${code}`);
     if (name.trim() && !autoJoined.current) {
       autoJoined.current = true;
       void join();
@@ -68,7 +67,6 @@ export function RoomScreen({ code, go }: { code: string; go: (r: Route) => void 
   useEffect(() => () => session?.stop(), [session]);
 
   const exit = () => {
-    history.replaceState(null, '', location.pathname);
     go({ name: 'home' });
   };
 
@@ -99,7 +97,16 @@ function InRoom({ code, session, onExit }: { code: string; session: RoomSession;
   const [msg, setMsg] = useState<string | null>(null);
   const room = st.room;
 
+  // Back button / leaving the screen without "Rời phòng": still mark the player as gone.
+  const left = useRef(false);
+  const live = useRef(room);
+  live.current = room;
+  useEffect(() => () => {
+    if (!left.current && live.current?.meta && !session.state.kicked) void leaveRoom(code, live.current.meta.status === 'lobby').catch(() => {});
+  }, []);
+
   const leave = async () => {
+    left.current = true;
     if (room?.meta && !st.kicked) await leaveRoom(code, room.meta.status === 'lobby').catch(() => {});
     session.stop();
     onExit();

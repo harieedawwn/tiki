@@ -64,7 +64,7 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
   useEffect(() => {
     // Covers for the first screen of the guess grid, so it opens instantly.
     const sorted = playlist.songs.slice().sort((a, b) => a.title.localeCompare(b.title, 'vi'));
-    prefetchCovers(sorted.slice(0, 24).map((s) => s.cover));
+    prefetchCovers(sorted.slice(0, 30).map((s) => s.cover));
     return () => {
       youtubeEngine().stopAll();
       localEngine.stop();

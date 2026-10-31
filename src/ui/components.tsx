@@ -3,46 +3,49 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { formatSeconds } from '../core/stages';
 import type { Song } from '../core/types';
 import { IconMusic } from './icons';
+import { useBackClose } from './nav';
 
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// YouTube thumbnails: maxres is 100-200 KB; hqdefault (~20 KB) is plenty for tiles. It is letterboxed
-// (4:3 around a 16:9 frame), so tiles zoom it to hide the bars.
-const YT_THUMB = /^(https:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/[^/]+\/)[a-z0-9_]+\.(?:jpg|webp)/i;
-export function coverUrl(url: string, q: 'sm' | 'lg'): { src: string; lb: boolean } {
+// YouTube thumbnails: maxres is 100-200 KB; hqdefault as WebP (~10-15 KB) is plenty for tiles. It is
+// letterboxed (4:3 around a 16:9 frame), so tiles zoom it to hide the bars.
+const YT_THUMB = /^https:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/([^/]+)\/[a-z0-9_]+\.(?:jpg|webp)/i;
+export function coverUrl(url: string, q: 'sm' | 'lg'): { src: string; fallback?: string; lb: boolean } {
   const m = url.match(YT_THUMB);
   if (!m) return { src: url, lb: false };
-  return q === 'sm' ? { src: m[1] + 'hqdefault.jpg', lb: true } : { src: url, lb: false };
+  if (q === 'lg') return { src: url, lb: false };
+  return { src: `https://i.ytimg.com/vi_webp/${m[1]}/hqdefault.webp`, fallback: `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`, lb: true };
 }
 
-/** Warms the browser cache for covers likely to be shown soon (idle time, small thumbnails). */
+/** Warms the browser cache for covers likely to be shown soon (small thumbnails, a few at a time). */
 export function prefetchCovers(urls: string[]): void {
-  const run = () => urls.forEach((u) => {
-    if (!u) return;
+  const list = urls.filter(Boolean).map((u) => coverUrl(u, 'sm').src);
+  let i = 0;
+  const next = () => {
+    if (i >= list.length) return;
     const img = new Image();
     img.decoding = 'async';
-    img.src = coverUrl(u, 'sm').src;
-  });
-  const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback;
-  ric ? ric(run) : setTimeout(run, 300);
+    img.onload = img.onerror = next;
+    img.src = list[i++];
+  };
+  for (let k = 0; k < 6; k++) next();
 }
 
 /**
  * Square cover. `q="lg"` shows the small thumbnail first and swaps in the full one when it arrives.
  * Without an image: a flat block with the title's first letter (or a note when `anonymous`).
  */
-export function Cover({ song, size, q = 'sm', anonymous }: {
-  song: Pick<Song, 'cover' | 'title'>; size?: number; q?: 'sm' | 'lg'; anonymous?: boolean;
+export function Cover({ song, size, q = 'sm', anonymous, eager }: {
+  song: Pick<Song, 'cover' | 'title'>; size?: number; q?: 'sm' | 'lg'; anonymous?: boolean; eager?: boolean;
 }) {
   const style = size ? { width: size + 'px', height: size + 'px' } : undefined;
-  const [loaded, setLoaded] = useState(false);
-  const [big, setBig] = useState(false);
   const sm = useMemo(() => coverUrl(song.cover, 'sm'), [song.cover]);
   const lg = useMemo(() => (q === 'lg' ? coverUrl(song.cover, 'lg') : null), [song.cover, q]);
-  useEffect(() => {
-    setLoaded(false);
-    setBig(false);
-  }, [song.cover]);
+  // Track which src has loaded (not a flag), so a cached image that loads before effects run still shows.
+  const [src, setSrc] = useState(sm.src);
+  const [done, setDone] = useState('');
+  const [big, setBig] = useState('');
+  if (src !== sm.src && src !== sm.fallback) setSrc(sm.src);
   if (!song.cover) {
     return (
       <span class="cover cover-empty" style={style} aria-hidden="true">
@@ -50,12 +53,17 @@ export function Cover({ song, size, q = 'sm', anonymous }: {
       </span>
     );
   }
+  const check = (el: HTMLImageElement | null) => {
+    if (el?.complete && el.naturalWidth > 0 && done !== el.getAttribute('src')) setDone(el.getAttribute('src')!);
+  };
   return (
-    <span class={'cover' + (loaded ? ' loaded' : '')} style={style}>
-      <img class={sm.lb ? 'lb' : ''} src={sm.src} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
-        onLoad={() => setLoaded(true)} onError={() => setLoaded(true)} />
+    <span class={'cover' + (done === src ? ' loaded' : '')} style={style}>
+      <img ref={check} class={sm.lb ? 'lb' : ''} src={src} alt="" loading={eager ? 'eager' : 'lazy'} decoding="async"
+        referrerpolicy="no-referrer" {...{ fetchpriority: eager ? 'high' : 'auto' }}
+        onLoad={() => setDone(src)}
+        onError={() => (sm.fallback && src !== sm.fallback ? setSrc(sm.fallback) : setDone(src))} />
       {lg && lg.src !== sm.src && (
-        <img class={'cover-hi' + (big ? ' on' : '')} src={lg.src} alt="" decoding="async" referrerpolicy="no-referrer" onLoad={() => setBig(true)} />
+        <img class={'cover-hi' + (big === lg.src ? ' on' : '')} src={lg.src} alt="" decoding="async" referrerpolicy="no-referrer" onLoad={() => setBig(lg.src)} />
       )}
     </span>
   );
@@ -203,6 +211,7 @@ export function ChoiceCards<T extends string>({ value, options, onChange, label,
 
 /** Generic bottom sheet with a scrim. */
 export function Sheet({ onClose, children, title }: { onClose: () => void; children: ComponentChildren; title: string }) {
+  useBackClose(onClose);
   return (
     <div class="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div class="sheet sheet-auto" role="dialog" aria-label={title}>

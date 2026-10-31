@@ -4,6 +4,7 @@ import type { Song } from '../core/types';
 import { Cover } from './components';
 import { useVisualViewport } from './hooks';
 import { IconCheck, IconSearch, IconUser, IconX } from './icons';
+import { useBackClose } from './nav';
 import { sfx } from './sfx';
 
 const indexCache = new WeakMap<Song[], SearchIndexEntry[]>();
@@ -31,6 +32,7 @@ function useSheetBox(frac = 0.72) {
 }
 
 function useEscape(onClose: () => void) {
+  useBackClose(onClose);
   useEffect(() => {
     sfx.open();
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -67,7 +69,7 @@ export function GuessSheet({ songs, wrong = [], disabled, disabledLabel, onSubmi
         <button key={s.id} role="option" aria-selected={sel === s.id} style={i < 18 ? { animationDelay: i * 18 + 'ms' } : undefined}
           class={'tile' + (sel === s.id ? ' selected' : '') + (wrong.includes(s.id) ? ' wrong' : '')}
           onClick={() => setSel(s.id)} onDblClick={() => submit(s.id)}>
-          <span class="tile-art"><Cover song={s} />{sel === s.id && <span class="tile-check"><IconCheck size={16} /></span>}</span>
+          <span class="tile-art"><Cover song={s} eager={i < 15} />{sel === s.id && <span class="tile-check"><IconCheck size={16} /></span>}</span>
           <span class="tile-title">{s.title}</span>
           <span class="tile-artist">{s.artist || ' '}</span>
         </button>
@@ -134,7 +136,7 @@ export function CoverPicker({ songs, wrong = [], disabled, disabledLabel, onSubm
             <button key={s.id} role="option" aria-selected={sel === s.id} aria-label={`Ảnh ${i + 1}`} style={{ animationDelay: Math.min(i, 24) * 14 + 'ms' }}
               class={'cover-opt' + (sel === s.id ? ' selected' : '') + (wrong.includes(s.id) ? ' wrong' : '')}
               disabled={wrong.includes(s.id)} onClick={() => setSel(s.id)} onDblClick={() => !disabled && onSubmit(s.id)}>
-              <Cover song={s} anonymous />
+              <Cover song={s} anonymous eager={i < 20} />
               {sel === s.id && <span class="tile-check"><IconCheck size={16} /></span>}
               {wrong.includes(s.id) && <span class="cover-x"><IconX size={28} /></span>}
             </button>
