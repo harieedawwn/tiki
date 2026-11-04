@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { engineFor } from '../../audio';
 import { hasFile, localEngine } from '../../audio/local';
 import { peaks } from '../../audio/silence';
-import { formatSeconds } from '../../core/stages';
+import { PRESET_ORDER, formatSeconds } from '../../core/stages';
 import type { Playlist, Song } from '../../core/types';
 import { savePlaylist } from '../../data/db';
 import { useSettings } from '../hooks';
@@ -96,7 +96,7 @@ export function SongEditor({ playlist, song, onClose }: { playlist: Playlist; so
     }
   };
 
-  const allStages = [...new Set([...settings.presets.tichtac.stages, ...settings.presets.thuong.stages])].sort((a, b) => a - b);
+  const allStages = [...new Set(PRESET_ORDER.flatMap((id) => settings.presets[id].stages))].sort((a, b) => a - b);
   const isLocal = song.source.type === 'local';
 
   return (

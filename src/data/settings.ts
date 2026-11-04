@@ -1,5 +1,5 @@
 import { DEV_CODE_SHA256 } from '../config';
-import { DEFAULT_PRESETS } from '../core/stages';
+import { DEFAULT_PRESETS, PRESET_ORDER, isPresetId, validStages } from '../core/stages';
 import type { GameKind, Preset, PresetId } from '../core/types';
 
 export type ThemeId = 'night' | 'ocean' | 'grape' | 'rose' | 'ink' | 'paper';
@@ -69,10 +69,26 @@ export function applyTheme(id: ThemeId): void {
   document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', t.bg));
 }
 
+/** Per-key merge with the defaults: older stored versions lack newer presets; invalid stage lists are dropped. */
+function mergePresets(stored: unknown): Record<PresetId, Preset> {
+  const src = (stored && typeof stored === 'object' ? stored : {}) as Partial<Record<PresetId, Partial<Preset>>>;
+  const out = { ...DEFAULT_PRESETS };
+  for (const id of PRESET_ORDER) {
+    const st = src[id]?.stages;
+    if (Array.isArray(st) && validStages(st)) out[id] = { ...DEFAULT_PRESETS[id], stages: st };
+  }
+  return out;
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS;
+    if (!raw) return DEFAULTS;
+    const stored = JSON.parse(raw);
+    const merged: Settings = { ...DEFAULTS, ...stored, presets: mergePresets(stored.presets) };
+    merged.lastGame = { ...DEFAULTS.lastGame, ...stored.lastGame };
+    if (!isPresetId(merged.lastGame.preset)) merged.lastGame.preset = 'tichtac';
+    return merged;
   } catch {
     return DEFAULTS;
   }

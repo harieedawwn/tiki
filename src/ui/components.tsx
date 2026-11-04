@@ -1,6 +1,6 @@
 import type { CSSProperties, ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { formatSeconds } from '../core/stages';
+import { MAX_STAGES, MIN_STAGES, formatSeconds, validStages } from '../core/stages';
 import type { Song } from '../core/types';
 import { IconMusic } from './icons';
 import { useBackClose } from './nav';
@@ -115,6 +115,7 @@ export function ClipBar({ seed, stages, stage, clip }: { seed: string; stages: n
   const heights = useMemo(() => bars(seed, N_BARS), [seed]);
   const total = stages[stages.length - 1];
   const unlocked = Math.min(100, (stages[stage] / total) * 100);
+  const reveal = useRef<HTMLDivElement>(null);
   const live = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
   const playing = useClipPlaying(clip);
@@ -128,18 +129,20 @@ export function ClipBar({ seed, stages, stage, clip }: { seed: string; stages: n
   ), [heights]);
 
   useEffect(() => {
-    if (!clip || !live.current || !head.current) return;
+    if (!clip || !reveal.current || !live.current || !head.current) return;
     const to = Math.min(100, (clip.ms / 1000 / total) * 100);
     const delay = Math.max(0, clip.start - performance.now());
     const late = Math.max(0, performance.now() - clip.start);
     const opts: KeyframeAnimationOptions = { duration: clip.ms, delay, easing: 'linear', fill: 'both' };
-    const a = live.current.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: `inset(0 ${100 - to}% 0 0)` }], opts);
+    // Compositor-only reveal: the clipping wrapper slides right while its content slides left by the same amount.
+    const a = reveal.current.animate([{ transform: 'translateX(-100%)' }, { transform: `translateX(${to - 100}%)` }], opts);
+    const a2 = live.current.animate([{ transform: 'translateX(100%)' }, { transform: `translateX(${100 - to}%)` }], opts);
     const b = head.current.animate(
       [{ transform: 'translateX(0%)', opacity: 1 }, { transform: `translateX(${to}%)`, opacity: 1, offset: 0.999 }, { transform: `translateX(${to}%)`, opacity: 0 }],
       opts,
     );
-    if (late) a.currentTime = b.currentTime = late;
-    return () => (a.cancel(), b.cancel());
+    if (late) a.currentTime = a2.currentTime = b.currentTime = late;
+    return () => (a.cancel(), a2.cancel(), b.cancel());
   }, [clip?.key, total]);
 
   return (
@@ -147,7 +150,7 @@ export function ClipBar({ seed, stages, stage, clip }: { seed: string; stages: n
       <div class="clipbar-track">
         <div class="clipbar-layer base">{svg}</div>
         <div class="clipbar-layer unlocked" style={{ clipPath: `inset(0 ${100 - unlocked}% 0 0)` }}>{svg}</div>
-        <div class="clipbar-layer live" ref={live} style={{ clipPath: 'inset(0 100% 0 0)' }}>{svg}</div>
+        <div class="clipbar-reveal" ref={reveal} aria-hidden="true"><div class="clipbar-layer live" ref={live}>{svg}</div></div>
         <div class="clipbar-head" ref={head}><i /></div>
         <div class="clipbar-marks">
           {stages.map((s, i) => <span key={i} class={'clipbar-mark' + (i <= stage ? ' on' : '')} style={{ left: (s / total) * 100 + '%' }} />)}
@@ -185,6 +188,45 @@ export function Segmented<T extends string | number>({ value, options, onChange,
         <button key={String(o.value)} role="radio" aria-checked={o.value === value} class={o.value === value ? 'on' : ''}
           disabled={o.disabled} onClick={() => onChange(o.value)}>{o.label}</button>
       ))}
+    </div>
+  );
+}
+
+const parseSec = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')));
+
+/** Editor for the custom difficulty: 3-8 increasing stage lengths. Reports the parsed list, or null while invalid. */
+export function StageEditor({ initial, onChange }: { initial: number[]; onChange: (stages: number[] | null) => void }) {
+  const [vals, setVals] = useState(() => initial.map(String));
+  const nums = vals.map(parseSec);
+  const ok = validStages(nums);
+  const apply = (next: string[]) => {
+    setVals(next);
+    const n = next.map(parseSec);
+    onChange(validStages(n) ? n : null);
+  };
+  const setCount = (n: number) => {
+    if (n < vals.length) return apply(vals.slice(0, n));
+    const out = vals.slice();
+    while (out.length < n) {
+      const last = parseSec(out[out.length - 1]);
+      out.push(String(Number.isFinite(last) ? Math.min(30, Math.round((last * 1.5 + 0.5) * 2) / 2) : 1));
+    }
+    apply(out);
+  };
+  const counts = Array.from({ length: MAX_STAGES - MIN_STAGES + 1 }, (_, i) => MIN_STAGES + i);
+  return (
+    <div class="stack-sm">
+      <span class="field-label">Số đoạn</span>
+      <Segmented label="Số đoạn" value={vals.length} onChange={setCount} options={counts.map((n) => ({ value: n, label: String(n) }))} />
+      <span class="field-label">Độ dài mỗi đoạn (giây)</span>
+      <div class="stage-grid">
+        {vals.map((v, i) => (
+          <input key={i} class={'input input-num num' + (v !== '' && !ok && !(nums[i] > 0 && nums[i] <= 30 && (i === 0 || nums[i] > nums[i - 1])) ? ' bad' : '')}
+            inputMode="decimal" value={v} aria-label={`Đoạn ${i + 1}`}
+            onInput={(e) => apply(vals.map((x, j) => (j === i ? e.currentTarget.value : x)))} />
+        ))}
+      </div>
+      {!ok && <p class="error-text">Cần {MIN_STAGES} đến {MAX_STAGES} số tăng dần, từ 0 đến 30 giây (ví dụ 0,5).</p>}
     </div>
   );
 }

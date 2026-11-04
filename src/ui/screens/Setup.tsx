@@ -2,13 +2,13 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { hasFile, localEngine } from '../../audio/local';
 import { COVER_CHOICES, GAME_KINDS, SOUND_CHOICES } from '../../core/modes';
-import { formatSeconds } from '../../core/stages';
+import { PRESET_ORDER, formatSeconds } from '../../core/stages';
 import type { GameKind, Playlist, PresetId } from '../../core/types';
 import { getPlaylist } from '../../data/db';
 import { relinkFiles } from '../../data/localImport';
 import { updateSettings } from '../../data/settings';
 import type { Route } from '../App';
-import { ChoiceCards, Cover, Segmented } from '../components';
+import { ChoiceCards, Cover, Segmented, StageEditor } from '../components';
 import { useSettings } from '../hooks';
 import { IconBack, IconClassic, IconCoverPick, IconFolder, IconMusic, IconPlay, IconRandom, IconSoundPick } from '../icons';
 import { enterFullscreenOnce } from '../pwa';
@@ -26,6 +26,7 @@ export function Setup({ playlistId, go }: { playlistId: string; go: (r: Route) =
   const [kind, setKind] = useState<GameKind>(last.kind);
   const [coverChoices, setCoverChoices] = useState(last.coverChoices);
   const [soundChoices, setSoundChoices] = useState(last.soundChoices);
+  const [customOk, setCustomOk] = useState(true);
   const [, force] = useState(0);
 
   useEffect(() => void getPlaylist(playlistId).then((x) => setP(x ?? null)), [playlistId]);
@@ -102,10 +103,17 @@ export function Setup({ playlistId, go }: { playlistId: string; go: (r: Route) =
         <section class="stack-sm">
           <h2 class="section-title">Độ khó</h2>
           <Segmented label="Độ khó" value={preset} onChange={setPreset}
-            options={(['tichtac', 'thuong'] as const).map((id) => ({ value: id, label: settings.presets[id].name }))} />
-          <div class="stage-chips num" aria-label="Các đoạn">
-            {settings.presets[preset].stages.map((st, i) => <span key={preset + i} style={{ animationDelay: i * 40 + 'ms' }}>{formatSeconds(st)}</span>)}
-          </div>
+            options={PRESET_ORDER.map((id) => ({ value: id, label: settings.presets[id].name }))} />
+          {preset === 'custom' ? (
+            <StageEditor initial={settings.presets.custom.stages} onChange={(st) => {
+              setCustomOk(!!st);
+              if (st) updateSettings({ presets: { ...settings.presets, custom: { ...settings.presets.custom, stages: st } } });
+            }} />
+          ) : (
+            <div class="stage-chips num" aria-label="Các đoạn">
+              {settings.presets[preset].stages.map((st, i) => <span key={preset + i} style={{ animationDelay: i * 40 + 'ms' }}>{formatSeconds(st)}</span>)}
+            </div>
+          )}
         </section>
       )}
 
@@ -117,7 +125,7 @@ export function Setup({ playlistId, go }: { playlistId: string; go: (r: Route) =
         </section>
       )}
 
-      <button class="btn btn-primary btn-xl btn-block cta" disabled={playable === 0 || !kindOk(kind)} onClick={start}>
+      <button class="btn btn-primary btn-xl btn-block cta" disabled={playable === 0 || !kindOk(kind) || (kind !== 'sound' && preset === 'custom' && !customOk)} onClick={start}>
         <IconPlay /> Chơi
       </button>
     </div>

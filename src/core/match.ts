@@ -1,6 +1,7 @@
 /** Pure multiplayer match rules (no Firebase, no DOM). */
 import { pointsForStage, speedBonus } from './scoring';
 import { clampChoices } from './modes';
+import { DEFAULT_PRESETS, isPresetId, validStages } from './stages';
 import type { GameKind, PresetId } from './types';
 
 export const MAX_PLAYERS = 12;
@@ -43,6 +44,7 @@ export function clampSettings(s: MatchSettings): MatchSettings {
   const n = (v: number, lo: number, hi: number, d: number) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d);
   return {
     ...s,
+    presetId: isPresetId(s.presetId) ? s.presetId : 'tichtac',
     rounds: n(s.rounds, 1, 50, 10),
     target: n(s.target, 500, 20000, 5000),
     elimEvery: n(s.elimEvery, 1, 10, 3),
@@ -62,6 +64,8 @@ export interface RoomOpts {
   flow: Flow;
   /** auto: seconds the answer stays on screen. */
   revealSec: number;
+  /** Stage lengths for presetId 'custom' (the host's failover successor must not read its own settings). */
+  stages?: number[];
 }
 
 export const DEFAULT_OPTS: RoomOpts = { kind: 'classic', choices: 20, flow: 'auto', revealSec: 6 };
@@ -70,12 +74,20 @@ export const REVEAL_CHOICES = [4, 6, 10, 15];
 export function clampOpts(o: Partial<RoomOpts> | null | undefined): RoomOpts {
   const v = { ...DEFAULT_OPTS, ...(o ?? {}) };
   const kind: GameKind = (['classic', 'random', 'cover', 'sound'] as const).includes(v.kind) ? v.kind : 'classic';
-  return {
+  const out: RoomOpts = {
     kind,
     choices: clampChoices(kind, v.choices),
     flow: v.flow === 'manual' ? 'manual' : 'auto',
     revealSec: Math.min(30, Math.max(3, Math.round(v.revealSec) || 6)),
   };
+  if (Array.isArray(v.stages) && validStages(v.stages)) out.stages = v.stages;
+  return out;
+}
+
+/** Stage lengths for a room: 'custom' comes from the room's opts, other presets from the given (local) table. */
+export function roomStages(presetId: string, opts: RoomOpts, presets: Record<PresetId, { stages: number[] }>): number[] {
+  if (presetId === 'custom' && opts.stages) return opts.stages;
+  return (isPresetId(presetId) ? presets[presetId] : DEFAULT_PRESETS.tichtac).stages;
 }
 
 /** Countdown before every clip, so all players start together. */

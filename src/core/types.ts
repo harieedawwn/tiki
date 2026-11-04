@@ -27,12 +27,12 @@ export interface Playlist {
   youtubeListId?: string;
 }
 
-export type PresetId = 'tichtac' | 'thuong';
+export type PresetId = 'de' | 'tichtac' | 'thuong' | 'custom';
 
 export interface Preset {
   id: PresetId;
   name: string;
-  /** Six stage lengths in seconds. */
+  /** Stage lengths in seconds (3-8, increasing). */
   stages: number[];
 }
 

@@ -3,7 +3,7 @@
 Mobile-first song-guessing PWA. Hear 0.5-12 s from the start of a song and name it. Vietnamese UI.
 
 ## Architecture
-- `src/core`: pure logic, no DOM. `game.ts` (state transitions), `scoring.ts`, `stages.ts` (presets), `text.ts` (normalize, search, name cleanup), `playlistLink.ts`.
+- `src/core`: pure logic, no DOM. `game.ts` (state transitions), `scoring.ts`, `stages.ts` (presets: Dễ, Chuẩn, Siêu ngắn, Tuỳ chỉnh; `PRESET_ORDER`, `validStages`), `text.ts` (normalize, search, name cleanup), `playlistLink.ts`.
 - `src/audio`: `engine.ts` (AudioEngine interface), `youtube.ts` (single IFrame player), `local.ts` (Web Audio), `silence.ts` (start detection, peaks), `debug.ts` (overlay store).
 - `src/data`: `db.ts` (IndexedDB, one `playlists` store), `settings.ts` (localStorage), `youtubeApi.ts`, `localImport.ts`.
 - `src/ui`: Preact screens (`Home`, `Setup`, `Game` incl. reveal and end, `Settings`), `GuessSheet`, `dev/*`, `multi/*` (lazy chunk).
@@ -12,7 +12,7 @@ Mobile-first song-guessing PWA. Hear 0.5-12 s from the start of a song and name 
 
 ## Game kinds (src/core/modes.ts)
 - classic: opening clip, guess by name (search). random: same, from a random start (`startFrac` resolved against the song length with `startFromFrac`). cover: classic clip, guess by picking one of N covers (12/20/40). sound: the cover is shown, N numbered 4 s clips from 30% into each song (4/6/10/20), 3 attempts (1000/500/250).
-- Multiplayer: `meta/opts` = { kind, choices, flow: auto|manual, revealSec }. The host writes `round.kind`, `round.startFrac`, `round.options` (song indexes), and for sound `round.optionVideos` + `round.cover` (the question; answer stays out of `round`). Sound kind is YouTube-only and has one 25 s window; clients play clips on their own. Before a sound round each device loads every option in its own muted player (`preloadSet`: 4 players on touch devices, 6 otherwise, extra options load on tap) and shows 'Đang tải các đoạn x/y'; it reports ready after that (15 s cap).
+- Multiplayer: `meta/opts` = { kind, choices, flow: auto|manual, revealSec, stages? (custom difficulty) }. The host writes `round.kind`, `round.startFrac`, `round.options` (song indexes), and for sound `round.optionVideos` + `round.cover` (the question; answer stays out of `round`). Sound kind is YouTube-only and has one 25 s window; clients play clips on their own. Before a sound round each device loads every option in its own muted player (`preloadSet`: 4 players on touch devices, 6 otherwise, extra options load on tap) and shows 'Đang tải các đoạn x/y'; it reports ready after that (15 s cap).
 - Spectating: after a correct guess (or when eliminated) a player only watches; they may mute the shared clips (`settings.listenSpectating`), the timeline keeps running.
 
 ## Vote skip and stickers (rooms)
@@ -42,9 +42,10 @@ interface AudioEngine {
 `engineFor(song)` in `src/audio/index.ts`.
 
 ## Decisions
-- Two YouTube players (`.yt-host`, youtube-nocookie host for fewer ads) live at body level, 200x200 (API minimum), under the opaque `.app`. The active one plays clips and is positioned over `.video-slot` at reveal (rAF loop; moving an iframe reloads it); the standby one preloads the next song, and `prepare` swaps roles when it already holds the requested song. iOS uses one player (each iframe needs a tap).
+- Two YouTube players (`.yt-host`, youtube-nocookie host for fewer ads) live at body level, 200x200 (API minimum), under the opaque `.app`. The active one plays clips and is positioned over `.video-slot` at reveal (`usePlayerSlot`: ResizeObserver, resize/scroll events and a ~0.9 s rAF burst, no permanent loop; moving an iframe reloads it); the standby one preloads the next song, and `prepare` swaps roles when it already holds the requested song. iOS uses one player (each iframe needs a tap).
 - Covers: tiles use YouTube `hqdefault` (zoomed 1.34x to hide the letterbox), reveal swaps in the stored full-size thumbnail; the service worker caches `i.ytimg.com` cache-first.
-- UI: themes are CSS token sets on `[data-theme]`; UI sounds are synthesized in `src/ui/sfx.ts`; the clip timeline is a WAAPI clip-path/transform animation started from the engine's `onStart` time.
+- Media Session: `src/audio/mediaCover.ts` overrides the iframe's notification metadata with a neutral one (top frame with playing silent audio wins in Chrome; skipped on iOS). Unverified on real devices.
+- UI: themes are CSS token sets on `[data-theme]`; UI sounds are synthesized in `src/ui/sfx.ts`; the clip timeline is a WAAPI transform-only animation (sliding clip wrapper + counter-translated content) started from the engine's `onStart` time.
 - YouTube prepare: reset the cached state, `loadVideoById` muted (nudged with playVideo every 1.5 s while not playing/buffering), wait until state PLAYING, the video id matches and currentTime passes start (pre-roll ads play out muted), then pause and seek. Clip: seek only if the player is not already parked at start (a seek forces a rebuffer), unMute, play, start timing on PLAYING with performance.now, mute and pause after the duration, then park at start again.
 - Local: decodeAudioData; start = first 10 ms RMS window that stays above -45 dBFS for 30 ms, minus 20 ms pre-roll, capped at 8 s (threshold and pre-roll are dev settings). Clips use AudioBufferSourceNode with 2 ms gain ramps.
 - Import: playlists.list (name, existence), playlistItems.list (contentDetails, 50/page), videos.list (snippet,status, 50 ids) drops private, non-embeddable, unprocessed and deleted videos. Re-import keeps edits and best score.

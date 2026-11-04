@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import { DEFAULT_PRESETS, formatSeconds, validStages } from '../../core/stages';
+import { DEFAULT_PRESETS, PRESET_ORDER, formatSeconds, validStages } from '../../core/stages';
 import { buildIndex, search } from '../../core/text';
 import type { Playlist, PresetId, Song } from '../../core/types';
 import { resetAllData, savePlaylist } from '../../data/db';
@@ -152,7 +152,7 @@ function ConfigTab() {
   };
   const savePreset = () => {
     const stages = vals.map((v) => Number(v.replace(',', '.')));
-    if (!validStages(stages)) return setErr('Cần 6 số dương, tăng dần, tối đa 30 giây.');
+    if (!validStages(stages)) return setErr('Cần 3 đến 8 số dương, tăng dần, tối đa 30 giây.');
     setErr(null);
     updateSettings({ presets: { ...s.presets, [which]: { ...s.presets[which], stages } } });
   };
@@ -161,7 +161,7 @@ function ConfigTab() {
       <section class="card stack-sm">
         <h2 class="section-title">Độ khó (giây)</h2>
         <Segmented label="Độ khó" value={which} onChange={pick}
-          options={(['tichtac', 'thuong'] as const).map((id) => ({ value: id, label: s.presets[id].name }))} />
+          options={PRESET_ORDER.map((id) => ({ value: id, label: s.presets[id].name }))} />
         <div class="preset-grid">
           {vals.map((v, i) => (
             <input key={i} class="input input-num num" inputMode="decimal" value={v} aria-label={`Đoạn ${i + 1}`}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { engineFor } from '../../audio';
 import { SkipSongError, type PrepareOptions } from '../../audio/engine';
 import { hasFile, localEngine } from '../../audio/local';
+import { refreshMediaCover, startMediaCover, stopMediaCover } from '../../audio/mediaCover';
 import { youtubeEngine } from '../../audio/youtube';
 import { createGame, currentSongId, giveUp, guess, isLastStage, markReady, moreTime, nextSong, roundPoints, skipBroken } from '../../core/game';
 import { SOUND_PREVIEW_FRAC, SOUND_PREVIEW_SEC, kindInfo } from '../../core/modes';
@@ -66,7 +67,9 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
     // Covers for the first screen of the guess grid, so it opens instantly.
     const sorted = playlist.songs.slice().sort((a, b) => a.title.localeCompare(b.title, 'vi'));
     prefetchCovers(sorted.slice(0, 30).map((s) => s.cover));
+    startMediaCover();
     return () => {
+      stopMediaCover();
       youtubeEngine().stopAll();
       localEngine.stop();
     };
@@ -133,6 +136,7 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
 
   const play = async (stage: number) => {
     if (!engine) return;
+    refreshMediaCover();
     setPlaying(true);
     const ms = Math.round(g.stages[stage] * 1000);
     try {
@@ -147,6 +151,7 @@ function GameRun({ playlist, count, presetId, kind, choices, go }: Props & { pla
     if (!s) return;
     setSoundSel(i);
     const seq = ++previewSeq.current;
+    refreshMediaCover();
     const eng = engineFor(s);
     youtubeEngine().stop();
     localEngine.stop();

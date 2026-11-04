@@ -358,13 +358,15 @@ input[type='range'] { accent-color: var(--accent); min-height: 44px; width: 100%
 .clipbar-track { position: relative; height: 116px; border-radius: 14px; background: var(--surface-2); overflow: hidden; }
 .clipbar-layer, .clipbar-head { position: absolute; top: 12px; bottom: 16px; left: 10px; right: 10px; }
 .clipbar-layer svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.clipbar-layer rect { transform-box: fill-box; transform-origin: center; }
 .clipbar-layer.base rect { fill: var(--surface-3); }
 .clipbar-layer.unlocked rect { fill: var(--accent-soft); }
 [data-theme='paper'] .clipbar-layer.unlocked rect { fill: #b9b2ff; }
 .clipbar-layer.live rect { fill: var(--accent); }
-.clipbar.playing .live rect { animation: bob 380ms ease-in-out infinite alternate; animation-delay: calc(var(--i) * -47ms); }
-@keyframes bob { from { transform: scaleY(0.55); } to { transform: scaleY(1.1); } }
+.clipbar-reveal { position: absolute; top: 12px; bottom: 16px; left: 10px; right: 10px; overflow: hidden; transform: translateX(-100%); will-change: transform; contain: layout paint; }
+.clipbar-reveal .clipbar-layer { inset: 0; transform: translateX(100%); will-change: transform; }
+/* The playing pulse is one small element (transform only), not 56 bars. */
+.clipbar.playing .clipbar-head i { animation: bob 380ms ease-in-out infinite alternate; }
+@keyframes bob { from { transform: scaleY(0.8); } to { transform: scaleY(1.08); } }
 .clipbar-head { opacity: 0; pointer-events: none; }
 .clipbar-head i { position: absolute; left: -1.5px; top: -6px; bottom: -6px; width: 3px; border-radius: 2px; background: var(--ink); }
 .clipbar-marks { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 7px; }
@@ -574,6 +576,9 @@ input[type='range'] { accent-color: var(--accent); min-height: 44px; width: 100%
 .wave-canvas { width: 100%; height: 96px; border: var(--b) solid var(--line); border-radius: 12px; background: var(--surface-2); touch-action: none; cursor: ew-resize; }
 .preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .preset-grid .input-num { width: 100%; }
+.stage-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stage-grid .input-num { width: 100%; text-align: center; }
+.stage-grid .input.bad { border-color: var(--bad); }
 .editor { gap: 14px; }
 .debug {
   position: fixed; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 60; pointer-events: none;

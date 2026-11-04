@@ -7,6 +7,7 @@ import type { Song } from '../../core/types';
 import { updateSettings } from '../../data/settings';
 import { serverNow } from '../../multi/firebase';
 import { becomeHost, sendCommand, setLocked, startRoundNow, submitGuess, voteSkip } from '../../multi/room';
+import { startMediaCover, stopMediaCover } from '../../audio/mediaCover';
 import type { RoomSession, SessionState } from '../../multi/session';
 import type { Room, RoundState } from '../../multi/types';
 import { Burst, ClipBar, CountUp, CountdownOverlay, Cover, StageIndicator, shake } from '../components';
@@ -70,6 +71,12 @@ export function Match({ code, room, session, state, perms }: {
   const roundIdx = round?.index;
   // Re-render only while a cooldown label is counting down.
   useTicker(cooldownUntil > Date.now() || wrongFlash ? 250 : 0);
+
+  // Keep the phone's media notification neutral for the whole match.
+  useEffect(() => {
+    startMediaCover();
+    return stopMediaCover;
+  }, []);
 
   useEffect(() => {
     setWrongIds([]);
@@ -317,8 +324,8 @@ function TimeLeft({ room, round }: { room: Room; round: RoundState }) {
 
 /** Shared 3-2-1 before each clip: everyone hears it at the same server time. */
 function Countdown({ round }: { round: RoundState }) {
-  useTicker(100);
   const now = serverNow();
+  useTicker(now < round.stageStartAt ? 100 : 0);
   const n = now < round.stageStartAt ? Math.ceil((round.stageStartAt - now) / 1000) : 0;
   const last = useRef(0);
   useEffect(() => {

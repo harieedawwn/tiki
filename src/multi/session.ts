@@ -1,3 +1,4 @@
+import { refreshMediaCover } from '../audio/mediaCover';
 import { localEngine } from '../audio/local';
 import { youtubeEngine } from '../audio/youtube';
 import { pickNextHost } from '../core/match';
@@ -202,7 +203,7 @@ export class RoomSession {
   /** Plays the current stage at `at` (performance.now()), or now for a local replay. */
   async playStage(round: RoundState, at?: number): Promise<void> {
     const ms = Math.round(round.stages[round.stage] * 1000);
-    const onStart = (t: number) => this.set({ clip: { start: t, ms, key: t } });
+    const onStart = (t: number) => (refreshMediaCover(), this.set({ clip: { start: t, ms, key: t } }));
     if (round.videoId) await youtubeEngine().playClip(ms, at, onStart);
     else if (this.buffers[round.stage]) await localEngine.playBuffer(this.buffers[round.stage], 0, ms, at, onStart);
   }
@@ -211,6 +212,7 @@ export class RoomSession {
   async previewOption(round: RoundState, i: number): Promise<void> {
     const v = round.optionVideos?.[i];
     if (!v) return;
+    refreshMediaCover();
     const seq = ++this.previewSeq;
     const yt = youtubeEngine();
     const opts = { startFrac: SOUND_PREVIEW_FRAC, clipSec: SOUND_PREVIEW_SEC };

@@ -1,6 +1,6 @@
 import { ref, update, increment } from 'firebase/database';
 import { localEngine } from '../audio/local';
-import { LEAD_MS, clampOpts, guessPoints, isElimRound, matchOutcome, pickEliminated, stageWindowMs, type Standing } from '../core/match';
+import { LEAD_MS, clampOpts, guessPoints, isElimRound, matchOutcome, pickEliminated, roomStages, stageWindowMs, type Standing } from '../core/match';
 import { SOUND_WINDOW_SEC, pickOptions, randomStartFrac, soundPoints, startFromFrac } from '../core/modes';
 import { speedBonus } from '../core/scoring';
 import type { Song } from '../core/types';
@@ -239,7 +239,7 @@ export class HostController {
     const queue = hs.queue ?? [];
     const opts = clampOpts(r.meta.opts);
     const songs = r.playlist?.songs ?? [];
-    const presetStages = getSettings().presets[r.meta.settings.presetId].stages;
+    const presetStages = roomStages(r.meta.settings.presetId, opts, getSettings().presets);
     const stages = opts.kind === 'sound' ? [SOUND_WINDOW_SEC] : presetStages;
     // Candidates for the choices: songs with a cover (cover kind) or a YouTube source (sound kind).
     const pool = songs.map((_, i) => i).filter((i) =>

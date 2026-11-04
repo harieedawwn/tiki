@@ -38,21 +38,48 @@ export function useVisualViewport(): { top: number; height: number } {
   return box;
 }
 
-/** While active, keeps the single YouTube player positioned over the given slot element. */
+/**
+ * While active, keeps the active YouTube player positioned over the given slot element. The box is
+ * measured once, then again on resize/scroll events and for a burst of ~0.9 s after mount (layout
+ * animations); styles are only written when the box changed. The iframe is never moved in the DOM.
+ */
 export function usePlayerSlot(ref: RefObject<HTMLElement | null>, active: boolean): void {
   useEffect(() => {
     if (!active) return;
     const yt = youtubeEngine();
     yt.setMode('reveal');
     let raf = 0;
-    const tick = () => {
+    let last = '';
+    const apply = () => {
       const r = ref.current?.getBoundingClientRect();
-      if (r) Object.assign(yt.host.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
-      raf = requestAnimationFrame(tick);
+      if (!r) return;
+      const key = `${r.left}|${r.top}|${r.width}|${r.height}`;
+      if (key === last) return;
+      last = key;
+      Object.assign(yt.host.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
     };
-    tick();
+    const until = performance.now() + 900;
+    const burst = () => {
+      apply();
+      if (performance.now() < until) raf = requestAnimationFrame(burst);
+    };
+    burst();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(apply) : null;
+    if (ref.current) ro?.observe(ref.current);
+    ro?.observe(document.body); // content shifting above the slot
+    const vv = window.visualViewport;
+    const opt = { capture: true, passive: true } as const;
+    window.addEventListener('resize', apply);
+    window.addEventListener('scroll', apply, opt);
+    vv?.addEventListener('resize', apply);
+    vv?.addEventListener('scroll', apply);
     return () => {
       cancelAnimationFrame(raf);
+      ro?.disconnect();
+      window.removeEventListener('resize', apply);
+      window.removeEventListener('scroll', apply, opt);
+      vv?.removeEventListener('resize', apply);
+      vv?.removeEventListener('scroll', apply);
       yt.setMode('hidden');
     };
   }, [active]);

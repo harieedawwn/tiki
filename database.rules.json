@@ -19,6 +19,9 @@
             "choices": { ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 40" },
             "flow": { ".validate": "newData.isString() && newData.val().matches(/^(auto|manual)$/)" },
             "revealSec": { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 30" },
+            "stages": {
+              "$i": { ".validate": "$i.matches(/^[0-7]$/) && newData.isNumber() && newData.val() > 0 && newData.val() <= 30" }
+            },
             "$other": { ".validate": false }
           },
           "mods": { "$pid": { ".validate": "newData.val() === true && $pid.length <= 40" } },

@@ -6,7 +6,9 @@ import type { Playlist, PresetId } from '../../core/types';
 import { saveLobbyDefaults, saveLobbyOpts } from '../../multi/identity';
 import { RoomError, roomOpts, setRoomOpts, setRoomPlaylist, setRoomSettings, startMatch, subscribeFeatured } from '../../multi/room';
 import type { FeaturedPlaylist, Room } from '../../multi/types';
-import { ChoiceCards, ErrorBox, Segmented } from '../components';
+import { ChoiceCards, ErrorBox, Segmented, StageEditor } from '../components';
+import { updateSettings } from '../../data/settings';
+import { PRESET_ORDER, formatSeconds, isPresetId } from '../../core/stages';
 import { useSettings } from '../hooks';
 import { IconAuto, IconElim, IconFlag, IconHand, IconPlay, IconRounds } from '../icons';
 import { KIND_ICONS } from '../screens/Setup';
@@ -51,6 +53,10 @@ export function Lobby({ code, room, perms }: { code: string; room: Room; perms: 
   useEffect(() => (perms.isHost ? subscribeFeatured(setFeatured) : undefined), [perms.isHost]);
 
   const o = roomOpts(room);
+  const pid = isPresetId(s.presetId) ? s.presetId : 'tichtac';
+  const presetLabel = pid === 'custom'
+    ? `${settings.presets.custom.name} (${(o.stages ?? settings.presets.custom.stages).map(formatSeconds).join(' / ')})`
+    : settings.presets[pid].name;
   const changeOpts = (patch: Partial<RoomOpts>) => {
     const next = clampOpts({ ...o, ...patch });
     saveLobbyOpts(next);
@@ -171,8 +177,18 @@ export function Lobby({ code, room, perms }: { code: string; room: Room; perms: 
               </label>
             )}
             {o.kind !== 'sound' && <span class="field-label">Độ khó</span>}
-            {o.kind !== 'sound' && <Segmented label="Độ khó" value={s.presetId} onChange={(presetId: PresetId) => change({ presetId })}
-              options={(['tichtac', 'thuong'] as const).map((id) => ({ value: id, label: settings.presets[id].name }))} />}
+            {o.kind !== 'sound' && <Segmented label="Độ khó" value={pid} onChange={(presetId: PresetId) => {
+              change({ presetId });
+              if (presetId === 'custom') changeOpts({ stages: o.stages ?? settings.presets.custom.stages });
+            }}
+              options={PRESET_ORDER.map((id) => ({ value: id, label: settings.presets[id].name }))} />}
+            {o.kind !== 'sound' && pid === 'custom' && (
+              <StageEditor initial={o.stages ?? settings.presets.custom.stages} onChange={(st) => {
+                if (!st) return;
+                updateSettings({ presets: { ...settings.presets, custom: { ...settings.presets.custom, stages: st } } });
+                changeOpts({ stages: st });
+              }} />
+            )}
             <label class="field">Thời gian đoán sau mỗi đoạn (giây)
               <input class="input num" type="number" min={3} max={20} value={s.intervalSec} onChange={(e) => change({ intervalSec: Number(e.currentTarget.value) })} />
             </label>
@@ -187,7 +203,7 @@ export function Lobby({ code, room, perms }: { code: string; room: Room; perms: 
         ) : (
           <p class="num">
             {kindInfo(o.kind).name} · {MODE_LABEL[s.mode]} · {s.rounds} vòng{s.mode === 'race' && ` · đích ${s.target.toLocaleString('vi-VN')}`}
-            {s.mode === 'elim' && ` · loại sau mỗi ${s.elimEvery} vòng`} · {settings.presets[s.presetId].name} · đoán {s.intervalSec} giây/đoạn
+            {s.mode === 'elim' && ` · loại sau mỗi ${s.elimEvery} vòng`} · {presetLabel} · đoán {s.intervalSec} giây/đoạn
             · chờ {s.cooldownSec} giây{s.speedBonus && ' · thưởng tốc độ'} · {o.flow === 'manual' ? 'chủ phòng điều khiển' : 'tự động'}
           </p>
         )}
